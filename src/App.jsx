@@ -79,12 +79,12 @@ const SCENARIOS = [
 ];
 
 const SERVICES = {
-  sweeping: { key: 'sweeping', name: 'Vacuum Sweeping', icon: Truck, provider: 'SweepCo', cost: '£150/hr', type: 'Cleanup' },
-  water: { key: 'water', name: 'Water Delivery', icon: Droplets, provider: 'Aqua Logistics', cost: '£80/load', type: 'Supply' },
-  smogGun: { key: 'smogGun', name: 'Anti-Smog Gun', icon: Wind, provider: 'AirClear', cost: '£250/day', type: 'Equipment' },
-  dryCapture: { key: 'dryCapture', name: 'HEPA Extractor', icon: Factory, provider: 'FilterPros', cost: '£300/day', type: 'Equipment' },
-  wheelWash: { key: 'wheelWash', name: 'Wheel Wash', icon: ShieldCheck, provider: 'SitePrep Ltd', cost: '£400/wk', type: 'Equipment' },
-  filterMaint: { key: 'filterMaint', name: 'Filter Replace', icon: Settings, provider: 'FilterPros', cost: '£120/unit', type: 'Maintenance' }
+  sweeping: { key: 'sweeping', name: 'Vacuum Sweeping', icon: Truck, provider: 'SweepCo', cost: '£150/hr', type: 'Cleanup', defaultLocation: 'haulRoad', targetZone: 'Main Haul Road' },
+  water: { key: 'water', name: 'Water Delivery', icon: Droplets, provider: 'Aqua Logistics', cost: '£80/load', type: 'Supply', defaultLocation: 'gate', targetZone: 'Water Storage Tank' },
+  smogGun: { key: 'smogGun', name: 'Anti-Smog Gun', icon: Wind, provider: 'AirClear', cost: '£250/day', type: 'Equipment', defaultLocation: 'excavation', targetZone: 'Excavation Pit' },
+  dryCapture: { key: 'dryCapture', name: 'HEPA Extractor', icon: Factory, provider: 'FilterPros', cost: '£300/day', type: 'Equipment', defaultLocation: 'cutting', targetZone: 'Cutting Station' },
+  wheelWash: { key: 'wheelWash', name: 'Wheel Wash', icon: ShieldCheck, provider: 'SitePrep Ltd', cost: '£400/wk', type: 'Equipment', defaultLocation: 'gate', targetZone: 'Perimeter Site Gate' },
+  filterMaint: { key: 'filterMaint', name: 'Filter Replace', icon: Settings, provider: 'FilterPros', cost: '£120/unit', type: 'Maintenance', defaultLocation: 'cutting', targetZone: 'Cutting Extraction' }
 };
 
 // --- HELPER PHYSICS ---
@@ -507,7 +507,23 @@ export default function App() {
             return { ...r, status: 'ENTERING SITE' }; 
         }
         if (targetStatus === 'ACTIVE' && r.status === 'ARRIVED') {
-            addLog(`Intervention ${id} is ACTIVE. Suppressing dust source.`, 'info');
+            addLog(`Intervention ${id} (${r.name}) is ACTIVE at ${r.location}.`, 'success');
+            setActiveInterventionName(r.name);
+            setInterventionsCount(p => p + 1);
+
+            // Execute physical operational mitigation
+            if (r.serviceKey === 'water') {
+               setWaterTank(w => Math.min(100, w + 35));
+               addLog(`Water reserves refilled (+35%). Site storage replenished.`, 'success');
+            } else if (r.serviceKey === 'smogGun' || r.serviceKey === 'dryCapture' || r.serviceKey === 'sweeping') {
+               setDustSources(prev => prev.map(s => ({ ...s, intensity: Math.max(0, s.intensity - 180) })));
+               addLog(`Particulate suppression active: Dust plume reduced by 180 µg/m³.`, 'success');
+            } else if (r.serviceKey === 'wheelWash') {
+               addLog(`Wheel wash active: Track-out mitigation operational at perimeter gate.`, 'success');
+            } else if (r.serviceKey === 'filterMaint') {
+               addLog(`HEPA filtration serviced: 99.97% particulate capture efficiency certified.`, 'success');
+            }
+
             targetReq = { ...r, status: 'ACTIVE' };
             return targetReq;
         }
@@ -531,6 +547,8 @@ export default function App() {
             'Main Haul Road': [{x:95,y:95}, {x:75,y:75}, {x:65,y:45}, {x:60,y:50}],
             'Material Stockpile': [{x:95,y:95}, {x:75,y:75}, {x:65,y:45}, {x:45,y:35}, {x:30,y:30}],
             'Cutting Station': [{x:95,y:95}, {x:85,y:75}, {x:80,y:60}, {x:80,y:30}],
+            'Site Gate': [{x:95,y:95}, {x:95,y:85}],
+            'Residential Zone': [{x:95,y:95}, {x:60,y:60}, {x:35,y:35}, {x:10,y:10}],
          };
          const route = routeMap[dispatchEvent.location] || [{x:95, y:95}, {x: 45, y: 60}];
          setVehicles(v => {
@@ -547,17 +565,53 @@ export default function App() {
 
   const addRequest = (serviceKey, locationId, priority = 'Medium', triggerReason) => {
     const service = SERVICES[serviceKey];
-    const locName = SITE_LOCATIONS[locationId]?.name || locationId;
-    if (requests.some(r => r.serviceKey === serviceKey && r.location === locName && r.status !== 'COMPLETED')) return;
-    if (requests.some(r => r.reason === triggerReason && r.status !== 'COMPLETED')) return;
+    if (!service) return false;
+    const targetLocId = locationId || service.defaultLocation || 'excavation';
+    const locName = SITE_LOCATIONS[targetLocId]?.name || targetLocId;
+
+    if (requests.some(r => r.serviceKey === serviceKey && r.location === locName && r.status !== 'COMPLETED' && r.status !== 'RETURNING')) {
+      addLog(`Notice: [${service.name}] is already active or en route to ${locName}.`, 'warning');
+      return false;
+    }
+
+    // Auto-start simulation if idle so timers & vehicle motion engage immediately
+    if (simulationStateRef.current !== 'running') {
+      setSimulationState('running');
+      addLog('Simulation engine engaged for service dispatch.', 'info');
+    }
+
+    // Spawn localized dust plume if suppressing and no plume is active
+    if ((serviceKey === 'smogGun' || serviceKey === 'dryCapture' || serviceKey === 'sweeping') && dustSources.length === 0) {
+      const loc = SITE_LOCATIONS[targetLocId] || SITE_LOCATIONS.excavation;
+      setDustSources([{ id: `plume-${Date.now()}`, x: loc.x, y: loc.y, intensity: 250 }]);
+      addLog(`Localized particulate surge detected at ${locName}. Dispatched rapid mitigation.`, 'warning');
+    }
+
+    // Lower water level if simulating water delivery when tank is full, so user sees refill
+    if (serviceKey === 'water' && waterTank > 70) {
+      setWaterTank(45);
+    }
 
     const newId = `REQ-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newReq = { id: newId, serviceKey, name: service.name, type: service.type, location: locName, vendor: service.provider, cost: service.cost, priority, status: 'REQUESTED', reason: triggerReason, createdAt: Date.now() };
+    const newReq = { 
+      id: newId, 
+      serviceKey, 
+      name: service.name, 
+      type: service.type, 
+      location: locName, 
+      vendor: service.provider, 
+      cost: service.cost, 
+      priority, 
+      status: 'REQUESTED', 
+      reason: triggerReason || `Catalogue dispatch: ${service.name}`, 
+      createdAt: Date.now() 
+    };
     setRequests(prev => [newReq, ...prev]);
-    addLog(`System generated Service Request [${newId}] for ${service.name}. Reason: ${triggerReason}`, 'info');
+    addLog(`System generated Service Request [${newId}] for ${service.name} at ${locName}.`, 'info');
 
-    setDemoTimer(() => advanceRequestStatus(newId, 'ACCEPTED'), 4000);
-    setDemoTimer(() => advanceRequestStatus(newId, 'DISPATCHED'), 8000);
+    setDemoTimer(() => advanceRequestStatus(newId, 'ACCEPTED'), 1500);
+    setDemoTimer(() => advanceRequestStatus(newId, 'DISPATCHED'), 3500);
+    return true;
   };
 
   // Listen for vehicle arrivals to complete requests
@@ -1312,7 +1366,7 @@ export default function App() {
                          <div className="text-[11px] text-slate-400 mt-1 font-medium"><span className="text-slate-500 font-bold uppercase tracking-widest">Sim Cost:</span> {svc.cost}</div>
                        </div>
                      </div>
-                     <button onClick={() => { addRequest(svc.key, 'gate', 'High', 'Manual scenario override executed.'); setShowCatalogue(false); }} className="w-full py-2 bg-slate-800 hover:bg-blue-600 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded transition-colors shadow-md">Simulate Requirement</button>
+                     <button onClick={() => { const ok = addRequest(svc.key, svc.defaultLocation, 'High', `Catalogue dispatch: ${svc.name}`); if (ok) setShowCatalogue(false); }} className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded transition-colors shadow-md">Simulate Requirement</button>
                    </div>
                  ))}
                </div>
