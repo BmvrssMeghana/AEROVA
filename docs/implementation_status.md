@@ -97,7 +97,9 @@
 | **Map Rendering** | Aerial only | Aerial + Mapbox Dark Blueprint | ENHANCED |
 | **Scientific Disclaimers** | Unlabeled | Explicit empirical model disclaimers | VALIDATED |
 
-- **Checkpoint Branch (Preserved):** `checkpoint/aerova-stable-2026-10-25` (`738654a`)
+- **Checkpoint Branch (Preserved):** `checkpoint/aerova-stable-2026-10-25` (`738654ab3f77a467995d31b7b7d86266066135d8`)
 - **Optimisation Commit Branch:** `main`
+- **Optimisation Commit Hash:** `f090957e60d149d82a3ff9a29db209ea1adf036e`
 - **GitHub Remote:** `https://github.com/repakasnehanshreddy/aerova.git`
+- **Remote Push Verification:** Confirmed via `git ls-remote` (both branches verified on GitHub).
 
