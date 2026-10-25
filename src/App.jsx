@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { 
-  Wind, Droplets, AlertTriangle, Settings, Activity, Play, Pause, Square, Zap, 
-  Truck, ShieldAlert, Flame, Clock, Factory, Map as MapIcon, ShieldCheck, 
-  ListChecks, History, TrendingDown, TrendingUp, Layers, X, RadioReceiver, 
-  BookOpen, Trash2, Crosshair, ArrowRight, Info, HardHat, Radio, Check,
-  BarChart2, Shield, Users, Target, ArrowLeft
+  Wind, Droplets, Settings, Activity, Play, Pause, Square, Zap, 
+  Truck, ShieldAlert, Flame, Factory, ShieldCheck, 
+  ListChecks, TrendingDown, Layers, X, RadioReceiver, 
+  BookOpen, Trash2, ArrowRight, Info, HardHat, Radio,
+  BarChart2, Shield, Target, ArrowLeft, Globe, RefreshCw
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { fetchSiteWeather, SITE_PRESETS } from './services/weatherService';
 
 function cn(...inputs) { return twMerge(clsx(inputs)); }
 
@@ -24,7 +25,7 @@ const SITE_LOCATIONS = {
 };
 
 const SENSORS = [
-  // 24 Internal Sensors
+  // 24 Internal Sensors (Simulated Mesh)
   { id: 'S01', name: 'Excavation Center', x: 45, y: 55, zone: 'Excavation', type: 'internal' },
   { id: 'S02', name: 'Excavation North', x: 45, y: 45, zone: 'Excavation', type: 'internal' },
   { id: 'S03', name: 'Excavation South', x: 45, y: 65, zone: 'Excavation', type: 'internal' },
@@ -49,13 +50,14 @@ const SENSORS = [
   { id: 'S22', name: 'Enclosure SE', x: 78, y: 82, zone: 'Boundary', type: 'internal' },
   { id: 'S23', name: 'Perimeter West', x: 26, y: 55, zone: 'Boundary', type: 'internal' },
   { id: 'S24', name: 'Perimeter East', x: 80, y: 55, zone: 'Boundary', type: 'internal' },
-  // External Receptors (6)
+  // External Receptors (6 Boundary Monitors)
   { id: 'R01', name: 'Residential NW', x: 15, y: 15, zone: 'Receptor', type: 'external' },
   { id: 'R02', name: 'Residential North', x: 50, y: 10, zone: 'Receptor', type: 'external' },
   { id: 'R03', name: 'Residential NE', x: 90, y: 15, zone: 'Receptor', type: 'external' },
   { id: 'R04', name: 'School SW', x: 15, y: 90, zone: 'Receptor', type: 'external' },
   { id: 'R05', name: 'Clinic SE', x: 80, y: 95, zone: 'Receptor', type: 'external' },
   { id: 'R06', name: 'Park West', x: 5, y: 55, zone: 'Receptor', type: 'external' },
+  // Dedicated Hardware Telemetry Node
   { id: 'HW-ESP32', name: 'ESP32 Telemetry Node', x: 75, y: 50, zone: 'Hardware', type: 'hardware' }
 ];
 
@@ -126,12 +128,12 @@ const CanvasHeatmap = ({ sources, wind, isVisible }) => {
     const wy = Math.sin(windRad);
 
     sources.forEach(s => {
-      for(let i=0; i<6; i++) {
+      for(let i = 0; i < 6; i++) {
          const intensity = s.intensity * Math.pow(0.7, i); 
          if (intensity < 10) continue;
          
-         const cx = (s.x / 100) * width + (wx * i * width * 0.05 * (wind.speed/10));
-         const cy = (s.y / 100) * height + (wy * i * height * 0.05 * (wind.speed/10));
+         const cx = (s.x / 100) * width + (wx * i * width * 0.05 * (wind.speed / 10));
+         const cy = (s.y / 100) * height + (wy * i * height * 0.05 * (wind.speed / 10));
          
          const radius = Math.min(width * 0.4, Math.max(100, intensity * 1.5));
          const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
@@ -175,7 +177,7 @@ const BoundaryOverlay = ({ isVisible, isLeakageActive }) => {
   );
 };
 
-const WindOverlay = ({ isVisible, wind, windDirStr, isHardwareMode, envData }) => {
+const WindOverlay = ({ isVisible, wind, windDirStr, isHardwareMode, envData, weatherSource }) => {
   if (!isVisible) return null;
   return (
     <>
@@ -184,8 +186,8 @@ const WindOverlay = ({ isVisible, wind, windDirStr, isHardwareMode, envData }) =
         <path d="M 85% 95% Q 60% 55% 15% 10%" fill="none" stroke="#38bdf8" strokeWidth="2" strokeDasharray="50 180" className="animate-[windflow_5s_linear_infinite]" style={{ animationDelay: '-1s' }} />
         <path d="M 100% 75% Q 65% 35% 25% 5%" fill="none" stroke="#38bdf8" strokeWidth="1" strokeDasharray="20 100" className="animate-[windflow_7s_linear_infinite]" style={{ animationDelay: '-3s' }} />
       </svg>
-      <div className="absolute top-6 left-6 z-30 bg-[#0f172a]/95 backdrop-blur-xl border border-slate-700/50 rounded-lg p-3 shadow-2xl flex flex-col gap-2 w-44">
-         <div className="flex items-center gap-4">
+      <div className="absolute top-6 left-6 z-30 bg-[#0f172a]/95 backdrop-blur-xl border border-slate-700/50 rounded-lg p-3 shadow-2xl flex flex-col gap-2 w-48">
+         <div className="flex items-center gap-3">
            <div className="relative w-10 h-10 rounded-full border-2 border-slate-700 flex items-center justify-center bg-[#020617] shadow-inner shrink-0">
               <div className="w-1.5 h-1.5 bg-slate-500 rounded-full" />
               <div className="absolute inset-0 flex items-center justify-center transition-transform duration-1000" style={{ transform: `rotate(${wind.angle}deg)` }}>
@@ -193,21 +195,30 @@ const WindOverlay = ({ isVisible, wind, windDirStr, isHardwareMode, envData }) =
               </div>
            </div>
            <div className="flex flex-col">
-              <div className="text-xs font-black text-white tracking-widest uppercase flex items-center gap-1.5"><span>{windDirStr}</span><span className="text-slate-500">·</span><span className="text-sky-400">{wind.speed}<span className="text-[9px] text-sky-500 ml-0.5">km/h</span></span></div>
-              <div className="text-[9px] text-slate-500 uppercase font-bold tracking-[0.2em] mt-1">{isHardwareMode ? 'Live Vector' : 'Sim. Vector'}</div>
+              <div className="text-xs font-black text-white tracking-widest uppercase flex items-center gap-1">
+                <span>{windDirStr}</span>
+                <span className="text-slate-500">·</span>
+                <span className="text-sky-400">{wind.speed}<span className="text-[9px] text-sky-500 ml-0.5">km/h</span></span>
+              </div>
+              <div className="text-[8px] text-slate-400 font-mono uppercase tracking-wider mt-0.5 truncate">
+                {isHardwareMode ? 'ESP32 Vector' : weatherSource || 'Meteorological'}
+              </div>
            </div>
          </div>
-         {isHardwareMode && envData && (
+         {envData && (
            <div className="flex items-center justify-between border-t border-slate-800 pt-2 mt-1">
-             <div className="text-[10px] text-slate-400 font-bold tracking-widest uppercase flex items-center gap-1"><Flame className="w-3 h-3 text-orange-500"/> {envData.temp}°C</div>
-             <div className="text-[10px] text-slate-400 font-bold tracking-widest uppercase flex items-center gap-1"><Droplets className="w-3 h-3 text-blue-500"/> {envData.hum}% RH</div>
+             <div className="text-[10px] text-slate-400 font-bold tracking-widest uppercase flex items-center gap-1">
+               <Flame className="w-3 h-3 text-orange-500"/> {envData.temp}°C
+             </div>
+             <div className="text-[10px] text-slate-400 font-bold tracking-widest uppercase flex items-center gap-1">
+               <Droplets className="w-3 h-3 text-blue-500"/> {envData.hum}% RH
+             </div>
            </div>
          )}
       </div>
     </>
   );
 };
-
 
 // ------------------------------------------------------------------
 // Main App Component
@@ -219,10 +230,28 @@ export default function App() {
   const [demoStage, setDemoStage] = useState(0); 
   const [activeScenario, setActiveScenario] = useState(SCENARIOS[0]);
   
+  // Site Preset & Weather Integration
+  const [currentSitePresetKey, setCurrentSitePresetKey] = useState('londonUrban');
+  const [siteWeather, setSiteWeather] = useState({
+    source: 'Open-Meteo API (Live)',
+    isLive: true,
+    temperature_c: 19.5,
+    humidity_pct: 62,
+    wind_speed_kmh: 15.0,
+    wind_dir_deg: 225,
+    wind_dir_cardinal: 'SW'
+  });
+  
+  // Map View Mode: Aerial vs Blueprint GIS
+  const [mapStyle, setMapStyle] = useState(() => {
+    return localStorage.getItem('dustgrid_map_style') || 'aerial';
+  });
+
   // Hardware Mode State
   const [hardwareMode, setHardwareMode] = useState(false);
   const [hardwareStatus, setHardwareStatus] = useState('WAITING FOR DATA');
   const [hardwareData, setHardwareData] = useState(null);
+  const [telemetryAgeStr, setTelemetryAgeStr] = useState('No data');
   
   // Physics State
   const [dustSources, setDustSources] = useState([]);
@@ -244,7 +273,7 @@ export default function App() {
         if (Array.isArray(parsed)) return parsed.map(r => r.status !== 'COMPLETED' ? { ...r, status: 'COMPLETED' } : r);
       }
       return []; 
-    } catch (e) { return []; }
+    } catch { return []; }
   });
   const [eventLog, setEventLog] = useState([]);
   const demoTimers = useRef([]);
@@ -272,7 +301,19 @@ export default function App() {
   const [selectedWorkerId, setSelectedWorkerId] = useState(null);
   const [showCatalogue, setShowCatalogue] = useState(false);
   
-  const [trendData, setTrendData] = useState([]);
+  const [trendData, setTrendData] = useState(() => {
+    const hist = [];
+    const now = new Date();
+    for (let i = 59; i >= 0; i--) {
+      const t = new Date(now.getTime() - i * 1000);
+      hist.push({
+        time: t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        pm10: 20 + (Math.random() * 2),
+        pm25: 10 + Math.random()
+      });
+    }
+    return hist;
+  });
   const [peakPm10, setPeakPm10] = useState(32);
   const [initialRisk, setInitialRisk] = useState(25);
   const [activeInterventionName, setActiveInterventionName] = useState('None');
@@ -286,53 +327,114 @@ export default function App() {
     return max;
   }, [sensors]);
   
+  const effectivePeakPm10 = Math.max(peakPm10, peakNetworkPm10);
   const overallRisk = useMemo(() => Math.min(100, (peakNetworkPm10 / 200) * 100), [peakNetworkPm10]);
 
   useEffect(() => { localStorage.setItem('dustgrid_requests', JSON.stringify(requests)); }, [requests]);
+  useEffect(() => { localStorage.setItem('dustgrid_map_style', mapStyle); }, [mapStyle]);
   useEffect(() => { if (logEndRef.current) logEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [eventLog]);
-  useEffect(() => { if (peakNetworkPm10 > peakPm10) setPeakPm10(peakNetworkPm10); }, [peakNetworkPm10, peakPm10]);
 
   const addLog = useCallback((msg, type = 'info') => {
     setEventLog(prev => [...prev, { time: new Date().toLocaleTimeString(), msg, type }]);
   }, []);
 
+  // Fetch real-time environmental weather data from Open-Meteo
+  useEffect(() => {
+    let active = true;
+    const loadWeather = async () => {
+      const preset = SITE_PRESETS[currentSitePresetKey] || SITE_PRESETS.londonUrban;
+      const weather = await fetchSiteWeather(preset.lat, preset.lng);
+      if (active) {
+        setSiteWeather(weather);
+        // If not running a synthetic scenario, adjust ambient wind to live weather
+        if (!isDemoMode && simulationState === 'idle') {
+          setWind({ angle: weather.wind_dir_deg, speed: weather.wind_speed_kmh });
+        }
+      }
+    };
+    loadWeather();
+    const interval = setInterval(loadWeather, 60000);
+    return () => { active = false; clearInterval(interval); };
+  }, [currentSitePresetKey, isDemoMode, simulationState]);
+
   const hardwareDataRef = useRef(null);
   useEffect(() => { hardwareDataRef.current = hardwareData; }, [hardwareData]);
 
-  // --- TELEMETRY POLLING ---
+  // --- TELEMETRY POLLING WITH ADAPTIVE BACKOFF & ABORT CONTROLLER ---
   useEffect(() => {
     let timeoutId;
+    let isCancelled = false;
+
     const pollTelemetry = async () => {
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 2500);
+
       try {
-        const res = await fetch('http://localhost:3001/api/telemetry');
+        const res = await fetch('http://localhost:3001/api/telemetry', { signal: controller.signal });
+        clearTimeout(fetchTimeout);
+
+        if (isCancelled) return;
+
         if (res.status === 202) {
-           if (hardwareStatus !== 'CONNECTED' && hardwareStatus !== 'STALE DATA') {
-             setHardwareStatus('WAITING FOR DATA');
-           }
+          if (hardwareStatus !== 'CONNECTED' && hardwareStatus !== 'STALE DATA') {
+            setHardwareStatus('WAITING FOR DATA');
+            setTelemetryAgeStr('Awaiting first packet');
+          }
         } else if (res.ok) {
-           const json = await res.json();
-           const data = json.data;
-           setHardwareData(data);
-           
-           const receivedAt = new Date(data.received_at).getTime();
-           const now = Date.now();
-           if (now - receivedAt > 10000) {
-             setHardwareStatus('STALE DATA');
-           } else {
-             setHardwareStatus('CONNECTED');
-             setHardwareMode(true);
-           }
+          const json = await res.json();
+          const data = json.data;
+          setHardwareData(data);
+          
+          const receivedAt = new Date(data.received_at).getTime();
+          const ageMs = Date.now() - receivedAt;
+          const ageSec = Math.floor(ageMs / 1000);
+          setTelemetryAgeStr(`${ageSec}s ago`);
+
+          if (ageMs > 10000) {
+            setHardwareStatus('STALE DATA');
+          } else {
+            setHardwareStatus('CONNECTED');
+            setHardwareMode(true);
+          }
         } else {
-           setHardwareStatus('DISCONNECTED');
+          setHardwareStatus('DISCONNECTED');
+          setTelemetryAgeStr('Server offline');
         }
-      } catch (e) {
-        setHardwareStatus('DISCONNECTED');
+      } catch {
+        if (!isCancelled) {
+          setHardwareStatus('DISCONNECTED');
+          setTelemetryAgeStr('Endpoint unreachable');
+        }
+      } finally {
+        clearTimeout(fetchTimeout);
+        if (!isCancelled) {
+          // Adaptive backoff: 1000ms when connected/waiting, 3500ms when disconnected to avoid spamming
+          const delay = (hardwareStatus === 'DISCONNECTED') ? 3500 : 1000;
+          timeoutId = setTimeout(pollTelemetry, delay);
+        }
       }
-      timeoutId = setTimeout(pollTelemetry, 1000);
     };
+
     pollTelemetry();
-    return () => clearTimeout(timeoutId);
+    return () => {
+      isCancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [hardwareStatus]);
+
+  // Trigger Mock ESP32 Telemetry for instantaneous validation
+  const triggerMockHardware = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/telemetry/mock', { method: 'POST' });
+      if (res.ok) {
+        addLog('Injected verified test payload to ESP32 Telemetry Node.', 'info');
+      } else {
+        addLog('Telemetry server not running on port 3001. Start server.cjs.', 'warning');
+      }
+    } catch {
+      addLog('Cannot reach telemetry server on port 3001.', 'critical');
+    }
+  }, [addLog]);
 
   // --- PHYSICS ENGINE TICK ---
   useEffect(() => {
@@ -344,9 +446,9 @@ export default function App() {
       setSensors(prev => {
         const next = {};
         SENSORS.forEach(s => {
-          let p10 = getPollutionAt(s.x, s.y, dustSources, wind) + (Math.random()*4-2);
-          if (p10 < 10) p10 = Math.max(0, p10 + (Math.random()-0.5));
-          let p25 = p10 * 0.5 + (Math.random()*2-1);
+          let p10 = getPollutionAt(s.x, s.y, dustSources, wind) + (Math.random() * 4 - 2);
+          if (p10 < 10) p10 = Math.max(0, p10 + (Math.random() - 0.5));
+          let p25 = p10 * 0.5 + (Math.random() * 2 - 1);
           
           if (s.id === 'HW-ESP32' && hardwareDataRef.current) {
              p10 = hardwareDataRef.current.pm10_ugm3 || p10;
@@ -378,10 +480,10 @@ export default function App() {
           newPos = { x: t.x, y: t.y };
           newIdx = (w.targetIdx + 1) % w.route.length;
         } else {
-          newPos = { x: w.pos.x + (dx/dist)*speed, y: w.pos.y + (dy/dist)*speed };
+          newPos = { x: w.pos.x + (dx / dist) * speed, y: w.pos.y + (dy / dist) * speed };
         }
         
-        const p10 = getPollutionAt(newPos.x, newPos.y, dustSources, wind) + (Math.random()*6-3);
+        const p10 = getPollutionAt(newPos.x, newPos.y, dustSources, wind) + (Math.random() * 6 - 3);
         const p25 = p10 * 0.5;
         const status = p10 > 120 ? 'critical' : p10 > 70 ? 'warning' : 'normal';
 
@@ -412,7 +514,7 @@ export default function App() {
             if (v.targetIdx === v.route.length - 1) return { ...v, pos: { x: t.x, y: t.y }, status: v.status === 'returning' ? 'returned' : 'arrived' };
             return { ...v, pos: { x: t.x, y: t.y }, targetIdx: v.targetIdx + 1 };
           }
-          return { ...v, pos: { x: v.pos.x + (dx/dist)*speed, y: v.pos.y + (dy/dist)*speed } };
+          return { ...v, pos: { x: v.pos.x + (dx / dist) * speed, y: v.pos.y + (dy / dist) * speed } };
         });
       });
 
@@ -448,21 +550,6 @@ export default function App() {
   useEffect(() => { simulationStateRef.current = simulationState; }, [simulationState]);
   
   useEffect(() => {
-    setTrendData(prev => {
-      if (prev.length > 0) return prev;
-      const hist = [];
-      const now = new Date();
-      for (let i = 59; i >= 0; i--) {
-        const t = new Date(now.getTime() - i * 1000);
-        hist.push({
-          time: t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          pm10: 20 + (Math.random() * 2),
-          pm25: 10 + Math.random()
-        });
-      }
-      return hist;
-    });
-
     const chartTick = setInterval(() => {
       setTrendData(prev => {
         const isPaused = simulationStateRef.current === 'paused';
@@ -494,49 +581,50 @@ export default function App() {
   }, [hardwareMode]);
 
   // --- SERVICE DISPATCH LIFECYCLE ---
-  const advanceRequestStatus = (id, targetStatus) => {
+  const advanceRequestStatus = useCallback((id, targetStatus) => {
     setRequests(prev => {
       let dispatchEvent = null;
-      let targetReq = null;
       const next = prev.map(r => {
         if (r.id !== id) return r;
-        if (targetStatus === 'ACCEPTED' && r.status === 'REQUESTED') { addLog(`Request ${id} ACCEPTED by ${r.vendor}`, 'success'); return { ...r, status: 'ACCEPTED' }; }
+        if (targetStatus === 'ACCEPTED' && r.status === 'REQUESTED') { 
+          addLog(`Request ${id} ACCEPTED by ${r.vendor}`, 'success'); 
+          return { ...r, status: 'ACCEPTED' }; 
+        }
         if (targetStatus === 'DISPATCHED' && r.status === 'ACCEPTED') { 
-            addLog(`Request ${id} DISPATCHED. Entering site.`, 'info'); 
-            dispatchEvent = r;
-            return { ...r, status: 'ENTERING SITE' }; 
+          addLog(`Request ${id} DISPATCHED. Entering site.`, 'info'); 
+          dispatchEvent = r;
+          return { ...r, status: 'ENTERING SITE' }; 
         }
         if (targetStatus === 'ACTIVE' && r.status === 'ARRIVED') {
-            addLog(`Intervention ${id} (${r.name}) is ACTIVE at ${r.location}.`, 'success');
-            setActiveInterventionName(r.name);
-            setInterventionsCount(p => p + 1);
+          addLog(`Intervention ${id} (${r.name}) is ACTIVE at ${r.location}.`, 'success');
+          setActiveInterventionName(r.name);
+          setInterventionsCount(p => p + 1);
 
-            // Execute physical operational mitigation
-            if (r.serviceKey === 'water') {
-               setWaterTank(w => Math.min(100, w + 35));
-               addLog(`Water reserves refilled (+35%). Site storage replenished.`, 'success');
-            } else if (r.serviceKey === 'smogGun' || r.serviceKey === 'dryCapture' || r.serviceKey === 'sweeping') {
-               setDustSources(prev => prev.map(s => ({ ...s, intensity: Math.max(0, s.intensity - 180) })));
-               addLog(`Particulate suppression active: Dust plume reduced by 180 µg/m³.`, 'success');
-            } else if (r.serviceKey === 'wheelWash') {
-               addLog(`Wheel wash active: Track-out mitigation operational at perimeter gate.`, 'success');
-            } else if (r.serviceKey === 'filterMaint') {
-               addLog(`HEPA filtration serviced: 99.97% particulate capture efficiency certified.`, 'success');
-            }
+          // Execute physical operational mitigation
+          if (r.serviceKey === 'water') {
+             setWaterTank(w => Math.min(100, w + 35));
+             addLog(`Water reserves refilled (+35%). Site storage replenished.`, 'success');
+          } else if (r.serviceKey === 'smogGun' || r.serviceKey === 'dryCapture' || r.serviceKey === 'sweeping') {
+             setDustSources(p => p.map(s => ({ ...s, intensity: Math.max(0, s.intensity - 180) })));
+             addLog(`Particulate suppression active: Dust plume reduced by 180 µg/m³.`, 'success');
+          } else if (r.serviceKey === 'wheelWash') {
+             addLog(`Wheel wash active: Track-out mitigation operational at perimeter gate.`, 'success');
+          } else if (r.serviceKey === 'filterMaint') {
+             addLog(`HEPA filtration serviced: 99.97% particulate capture efficiency certified.`, 'success');
+          }
 
-            targetReq = { ...r, status: 'ACTIVE' };
-            return targetReq;
+          return { ...r, status: 'ACTIVE' };
         }
         if (targetStatus === 'COMPLETED' && r.status === 'ACTIVE') {
-            addLog(`Service ${id} COMPLETED. Vehicle returning to base.`, 'success');
-            setVehicles(vPrev => vPrev.map(veh => {
-               if (veh.reqId === id) {
-                  const returnRoute = [...veh.route].reverse();
-                  return { ...veh, route: returnRoute, targetIdx: 1, status: 'returning', prevStatus: 'returning' };
-               }
-               return veh;
-            }));
-            return { ...r, status: 'RETURNING' };
+          addLog(`Service ${id} COMPLETED. Vehicle returning to base.`, 'success');
+          setVehicles(vPrev => vPrev.map(veh => {
+             if (veh.reqId === id) {
+                const returnRoute = [...veh.route].reverse();
+                return { ...veh, route: returnRoute, targetIdx: 1, status: 'returning', prevStatus: 'returning' };
+             }
+             return veh;
+          }));
+          return { ...r, status: 'RETURNING' };
         }
         return r; 
       });
@@ -561,9 +649,9 @@ export default function App() {
       }
       return next;
     });
-  };
+  }, [addLog]);
 
-  const addRequest = (serviceKey, locationId, priority = 'Medium', triggerReason) => {
+  const addRequest = useCallback((serviceKey, locationId, priority = 'Medium', triggerReason) => {
     const service = SERVICES[serviceKey];
     if (!service) return false;
     const targetLocId = locationId || service.defaultLocation || 'excavation';
@@ -612,7 +700,7 @@ export default function App() {
     setDemoTimer(() => advanceRequestStatus(newId, 'ACCEPTED'), 1500);
     setDemoTimer(() => advanceRequestStatus(newId, 'DISPATCHED'), 3500);
     return true;
-  };
+  }, [requests, dustSources.length, waterTank, addLog, setDemoTimer, advanceRequestStatus]);
 
   // Listen for vehicle arrivals to complete requests
   useEffect(() => {
@@ -652,7 +740,7 @@ export default function App() {
       });
       return shouldFilter ? nextVehs.filter(v => v.status !== 'returned') : nextVehs;
     });
-  }, [vehicles, addLog]);
+  }, [vehicles, addLog, setDemoTimer, advanceRequestStatus]);
 
   useEffect(() => {
      if (isDemoMode && demoStage === 5) {
@@ -689,16 +777,15 @@ export default function App() {
     }
 
     // Downwind risk
-    if (hwData.wind_speed_kmh > 20 && hwData.pm10_ugm3 > 80) {
-      if (!downwindExposure) {
-         setDownwindExposure(true);
-         addLog('Hardware telemetry: High wind causing downwind exposure risk', 'warning');
+    const isDownwindRisk = hwData.wind_speed_kmh > 20 && hwData.pm10_ugm3 > 80;
+    if (isDownwindRisk !== downwindExposure) {
+      setDownwindExposure(isDownwindRisk);
+      if (isDownwindRisk) {
+        addLog('Hardware telemetry: High wind causing downwind exposure risk', 'warning');
       }
-    } else {
-      if (downwindExposure) setDownwindExposure(false);
     }
     
-  }, [hardwareData, hardwareMode, simulationState, isDemoMode, downwindExposure, addLog]);
+  }, [hardwareData, hardwareMode, simulationState, isDemoMode, downwindExposure, addLog, addRequest]);
 
   // --- DEMO STORYTELLING SCRIPT ---
   const gradualIntervalRef = useRef(null);
@@ -728,7 +815,7 @@ export default function App() {
           let growTicks = 0;
           gradualIntervalRef.current = setDemoInterval(() => {
              growTicks++;
-             setDustSources(prev => prev.map(s => ({ ...s, intensity: Math.min(scen.intensity, s.intensity + (scen.intensity/10)) })));
+             setDustSources(p => p.map(s => ({ ...s, intensity: Math.min(scen.intensity, s.intensity + (scen.intensity / 10)) })));
              if (growTicks >= 10) {
                  clearDemoInterval(gradualIntervalRef.current);
                  setDemoStage(3);
@@ -756,7 +843,7 @@ export default function App() {
           let ticks = 0;
           gradualIntervalRef.current = setDemoInterval(() => {
             ticks++;
-            setDustSources(prev => prev.map(s => ({ ...s, intensity: Math.max(0, s.intensity - 25) })));
+            setDustSources(p => p.map(s => ({ ...s, intensity: Math.max(0, s.intensity - 25) })));
             if (ticks >= 15) {
               clearDemoInterval(gradualIntervalRef.current);
               setDownwindExposure(false);
@@ -774,7 +861,7 @@ export default function App() {
       }
     };
     runDemoStage();
-  }, [demoStage, isDemoMode, activeScenario, addLog, setDemoTimer, setDemoInterval, clearDemoInterval]);
+  }, [demoStage, isDemoMode, activeScenario, addLog, setDemoTimer, setDemoInterval, clearDemoInterval, addRequest]);
 
   const resetSimulation = () => {
     setSimulationState('idle'); setIsDemoMode(false); setDemoStage(0);
@@ -812,7 +899,7 @@ export default function App() {
   const getRiskColor = (val) => val < 40 ? 'text-green-400' : val < 70 ? 'text-amber-400' : 'text-red-500';
   const getRiskBgColor = (val) => val < 40 ? 'bg-green-500/10 border-green-500/20' : val < 70 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20';
 
-  const pm10Reduction = peakPm10 > 0 ? Math.max(0, ((peakPm10 - peakNetworkPm10) / peakPm10) * 100).toFixed(0) : 0;
+  const pm10Reduction = effectivePeakPm10 > 0 ? Math.max(0, ((effectivePeakPm10 - peakNetworkPm10) / effectivePeakPm10) * 100).toFixed(0) : 0;
   
   const getProgressWidth = (status) => {
     switch (status) {
@@ -829,8 +916,8 @@ export default function App() {
   };
 
   const demoStory = {
-    0: { title: "SYSTEM IDLE", source: "N/A", why: "Sensors and wearables report normal conditions.", action: "Monitoring", next: "Press RUN LIVE DEMO to observe automated dust mitigation." },
-    1: { title: "ACTIVITY DETECTED", source: activeScenario.name, why: "Operations initiating at zone.", action: "Monitoring", next: "Sensors are tracking particulate matter generation." },
+    0: { title: "SYSTEM IDLE", source: "Sensor Mesh", why: "Sensors and wearables report nominal baseline conditions.", action: "Monitoring", next: "Press RUN LIVE DEMO or TRIGGER MOCK ESP32 to test mitigation workflows." },
+    1: { title: "ACTIVITY DETECTED", source: activeScenario.name, why: "Operational tasks initiating at zone.", action: "Monitoring", next: "Sensors are tracking particulate matter generation." },
     2: { title: "DUST DETECTED", source: activeScenario.name, why: "Activity is generating heavy airborne particles.", action: "Analyzing Risk", next: "AEROVA is evaluating worker exposure and wind drift." },
     3: { title: "EXPOSURE WARNING", source: "Downwind Area", why: "Wind is pushing particulate plume toward sensitive receptors.", action: "Safety Response", next: "Alerting supervisor. Selecting localized control." },
     4: { title: "CONTROL SELECTED", source: activeScenario.name, why: "Rapid suppression required to protect workers and compliance.", action: activeScenario.interventionName, next: "Dispatching service equipment to zone." },
@@ -846,42 +933,69 @@ export default function App() {
   
   const networkStats = useMemo(() => {
     let norm = 0, warn = 0, crit = 0;
-    Object.values(sensors).forEach(s => { if(s.status==='critical') crit++; else if(s.status==='warning') warn++; else norm++; });
+    Object.values(sensors).forEach(s => { if(s.status === 'critical') crit++; else if(s.status === 'warning') warn++; else norm++; });
     return { norm, warn, crit, total: Object.keys(sensors).length };
   }, [sensors]);
+
+  const currentPreset = SITE_PRESETS[currentSitePresetKey] || SITE_PRESETS.londonUrban;
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#020617] text-slate-300 font-sans selection:bg-blue-500/30">
       
       {/* A. TOP NAVIGATION */}
       <header className="h-[60px] bg-[#020617] border-b border-slate-800 flex items-center justify-between px-6 z-50 shrink-0">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <div className="bg-blue-600/20 border border-blue-500/50 p-1.5 rounded-md"><Wind className="text-blue-400 w-5 h-5" /></div>
           <h1 className="text-xl font-black text-white tracking-[0.2em] uppercase">AER<span className="text-blue-500">OVA</span></h1>
-          <span className="ml-2 text-[10px] uppercase font-black tracking-widest text-slate-500 border border-slate-800 px-2 py-0.5 rounded-full hidden sm:block">GIS Operations Center</span>
+          <span className="ml-2 text-[10px] uppercase font-black tracking-widest text-slate-500 border border-slate-800 px-2 py-0.5 rounded-full hidden md:block">Air Quality OS</span>
+          
+          {/* Mode Pill */}
           <span className={cn("ml-2 text-[10px] uppercase font-black tracking-widest border px-2 py-0.5 rounded-full flex items-center gap-1.5", hardwareMode ? "text-purple-400 bg-purple-900/30 border-purple-800/50" : "text-blue-400 bg-blue-900/30 border-blue-800/50")}>
              <Activity className={cn("w-3 h-3", simulationState === 'running' && "animate-pulse")} /> {hardwareMode ? 'HARDWARE MODE' : 'SIMULATION MODE'}
           </span>
-          <span className={cn("ml-2 text-[10px] uppercase font-black tracking-widest border px-2 py-0.5 rounded-full flex items-center gap-1.5 hidden sm:flex", 
+
+          {/* Telemetry Status Pill */}
+          <span className={cn("text-[10px] uppercase font-black tracking-widest border px-2 py-0.5 rounded-full items-center gap-1.5 hidden sm:flex", 
               hardwareStatus === 'CONNECTED' ? 'text-green-400 bg-green-900/30 border-green-800/50' :
               hardwareStatus === 'STALE DATA' ? 'text-amber-400 bg-amber-900/30 border-amber-800/50' :
               hardwareStatus === 'DISCONNECTED' ? 'text-red-400 bg-red-900/30 border-red-800/50' :
               'text-slate-400 bg-slate-900/30 border-slate-800/50'
-          )}>
-             <Radio className={cn("w-3 h-3", hardwareStatus === 'CONNECTED' && "animate-pulse")} /> {hardwareStatus}
+          )} title={`Telemetry Age: ${telemetryAgeStr}`}>
+             <Radio className={cn("w-3 h-3", hardwareStatus === 'CONNECTED' && "animate-pulse")} /> {hardwareStatus} ({telemetryAgeStr})
           </span>
+
+          {/* Quick Mock ESP32 Button */}
+          <button onClick={triggerMockHardware} title="Send a test packet to /api/telemetry/mock" className="text-[9px] uppercase font-black tracking-wider text-slate-400 hover:text-purple-300 bg-purple-950/40 border border-purple-800/40 px-2 py-0.5 rounded flex items-center gap-1 transition-colors">
+            <RefreshCw className="w-2.5 h-2.5" /> Test HW Packet
+          </button>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Site Location Selector */}
+          <div className="hidden lg:flex items-center gap-2 bg-[#090f1e] border border-slate-800 rounded px-2.5 py-1 text-[10px] font-bold text-slate-400">
+            <Globe className="w-3.5 h-3.5 text-sky-400" />
+            <select 
+              value={currentSitePresetKey} 
+              onChange={(e) => setCurrentSitePresetKey(e.target.value)}
+              className="bg-transparent text-slate-200 outline-none cursor-pointer font-bold"
+            >
+              {Object.entries(SITE_PRESETS).map(([key, site]) => (
+                <option key={key} value={key} className="bg-[#090f1e] text-slate-200">{site.name}</option>
+              ))}
+            </select>
+          </div>
+
           <button onClick={() => setShowCatalogue(true)} className="px-3 py-1.5 hover:bg-slate-800 text-slate-300 text-[10px] font-black uppercase tracking-widest rounded border border-slate-700 flex items-center gap-2 transition-colors">
             <BookOpen className="w-3.5 h-3.5" /> Catalogue
           </button>
+
           <div className="flex bg-[#0f172a] rounded p-1 border border-slate-800">
-            <button onClick={() => { if (!isDemoMode) setSimulationState('running'); }} disabled={isDemoMode} className={cn("px-4 py-1.5 rounded-sm flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-colors", simulationState === 'running' && !isDemoMode ? "bg-green-500/20 text-green-400" : "text-slate-500 hover:text-white")}><Play className="w-3.5 h-3.5" /> Start</button>
-            <button onClick={() => { if (!isDemoMode) setSimulationState('paused'); }} disabled={isDemoMode} className={cn("px-4 py-1.5 rounded-sm flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-colors", simulationState === 'paused' && !isDemoMode ? "bg-amber-500/20 text-amber-400" : "text-slate-500 hover:text-white")}><Pause className="w-3.5 h-3.5" /> Pause</button>
-            <button onClick={resetSimulation} className="px-4 py-1.5 rounded-sm flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"><Square className="w-3.5 h-3.5" /> Reset</button>
+            <button onClick={() => { if (!isDemoMode) setSimulationState('running'); }} disabled={isDemoMode} className={cn("px-3 py-1 rounded-sm flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-colors", simulationState === 'running' && !isDemoMode ? "bg-green-500/20 text-green-400" : "text-slate-500 hover:text-white")}><Play className="w-3.5 h-3.5" /> Start</button>
+            <button onClick={() => { if (!isDemoMode) setSimulationState('paused'); }} disabled={isDemoMode} className={cn("px-3 py-1 rounded-sm flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-colors", simulationState === 'paused' && !isDemoMode ? "bg-amber-500/20 text-amber-400" : "text-slate-500 hover:text-white")}><Pause className="w-3.5 h-3.5" /> Pause</button>
+            <button onClick={resetSimulation} className="px-3 py-1 rounded-sm flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"><Square className="w-3.5 h-3.5" /> Reset</button>
           </div>
-          <button onClick={runLiveDemo} disabled={isDemoMode} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-[0.15em] rounded shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center gap-2 disabled:opacity-50 transition-colors">
+
+          <button onClick={runLiveDemo} disabled={isDemoMode} className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-[0.15em] rounded shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center gap-2 disabled:opacity-50 transition-colors">
             <Zap className={cn("w-4 h-4", isDemoMode && "animate-pulse")} /> {isDemoMode ? `DEMO (${demoStage}/7)` : 'RUN LIVE DEMO'}
           </button>
         </div>
@@ -891,7 +1005,10 @@ export default function App() {
       <div className="h-[90px] flex gap-4 px-6 py-3 border-b border-slate-800 shrink-0 bg-[#090f1e]/80">
         <div className={cn("flex-1 rounded-lg border flex items-center justify-between p-4 transition-colors", getRiskBgColor(overallRisk))}>
            <div>
-              <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Overall Dust Risk</div>
+              <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1 flex items-center gap-1.5">
+                <span>Overall Dust Risk</span>
+                <span className="text-[8px] bg-slate-800/80 text-slate-400 px-1.5 py-0.2 rounded font-mono">Sim. Model</span>
+              </div>
               <div className="flex items-baseline gap-2">
                  <span className={cn("text-3xl font-black", getRiskColor(overallRisk))}>{overallRisk.toFixed(0)}</span>
                  <span className="text-xs text-slate-500 font-bold uppercase">/ 100</span>
@@ -945,29 +1062,92 @@ export default function App() {
         
         {/* C. MAIN MONITORING AREA */}
         <section className="flex-[2.2] relative bg-[#020617] overflow-hidden border-r border-slate-800">
-          <img src="/site_aerial.jpg" alt="Aerial Site View" className="absolute inset-0 w-full h-full object-cover" />
+          
+          {/* Map Base Rendering: Satellite vs Mapbox Dark Blueprint */}
+          {mapStyle === 'aerial' ? (
+            <img src="/site_aerial.jpg" alt="Aerial Site View" className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 bg-[#060c18] overflow-hidden">
+              <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-25">
+                <pattern id="gis-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#38bdf8" strokeWidth="0.5" />
+                </pattern>
+                <rect width="100%" height="100%" fill="url(#gis-grid)" />
+              </svg>
+
+              <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+                <polygon points="10,95 20,20 85,5 95,80 60,95" fill="rgba(56, 189, 248, 0.04)" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+                <polyline points="95,95 75,75 65,45 60,50" fill="none" stroke="#64748b" strokeWidth="6" strokeLinecap="round" strokeOpacity="0.4" vectorEffect="non-scaling-stroke" />
+                <polyline points="95,95 75,75 65,45 60,50" fill="none" stroke="#f59e0b" strokeWidth="1" strokeDasharray="6 6" vectorEffect="non-scaling-stroke" />
+                
+                <rect x="38" y="50" width="16" height="18" rx="2" fill="rgba(239, 68, 68, 0.08)" stroke="#ef4444" strokeWidth="1" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
+                <text x="40" y="54" fill="#f87171" fontSize="2.5" fontWeight="bold">EXCAVATION PIT</text>
+                
+                <rect x="72" y="24" width="14" height="12" rx="2" fill="rgba(168, 85, 247, 0.08)" stroke="#a855f7" strokeWidth="1" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
+                <text x="73" y="28" fill="#c084fc" fontSize="2.5" fontWeight="bold">CUTTING STATION</text>
+                
+                <rect x="24" y="24" width="16" height="14" rx="2" fill="rgba(234, 179, 8, 0.08)" stroke="#eab308" strokeWidth="1" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
+                <text x="25" y="28" fill="#facc15" fontSize="2.5" fontWeight="bold">MATERIAL STOCKPILE</text>
+                
+                <rect x="91" y="80" width="8" height="12" rx="1" fill="rgba(34, 197, 94, 0.12)" stroke="#22c55e" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+                <text x="92" y="84" fill="#4ade80" fontSize="2.5" fontWeight="bold">SITE GATE</text>
+              </svg>
+
+              <div className="absolute bottom-4 left-4 z-20 bg-slate-950/80 border border-slate-800 rounded px-2.5 py-1 text-[9px] font-mono text-slate-400">
+                <span className="text-sky-400 font-bold">MAPBOX BLUEPRINT GIS</span> • {currentPreset.lat.toFixed(4)}°N, {currentPreset.lng.toFixed(4)}°W • EPSG:3857
+              </div>
+            </div>
+          )}
           
           <BoundaryOverlay isVisible={false} isLeakageActive={downwindExposure} />
           <CanvasHeatmap sources={dustSources} wind={wind} isVisible={mapLayers.heatmap} />
-          <WindOverlay isVisible={mapLayers.wind} wind={wind} windDirStr={activeScenario.windDir} isHardwareMode={hardwareMode} envData={hardwareData ? { temp: hardwareData.temperature_c, hum: hardwareData.humidity_pct } : null} />
+          <WindOverlay 
+            isVisible={mapLayers.wind} 
+            wind={wind} 
+            windDirStr={activeScenario.windDir || siteWeather.wind_dir_cardinal} 
+            isHardwareMode={hardwareMode} 
+            envData={hardwareData ? { temp: hardwareData.temperature_c, hum: hardwareData.humidity_pct } : { temp: siteWeather.temperature_c, hum: siteWeather.humidity_pct }} 
+            weatherSource={siteWeather.source}
+          />
 
+          {/* Scientific Disclaimer & Heatmap Scale Bar */}
           {mapLayers.heatmap && (
-             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-[#0f172a]/95 backdrop-blur-xl p-3 border border-slate-700/50 rounded shadow-2xl flex flex-col gap-2 pointer-events-none">
-               <div className="text-[9px] uppercase font-black text-slate-400 tracking-widest text-center">PM10 Concentration (µg/m³)</div>
+             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-[#0f172a]/95 backdrop-blur-xl p-3 border border-slate-700/50 rounded shadow-2xl flex flex-col gap-1.5 pointer-events-none max-w-sm">
+               <div className="text-[9px] uppercase font-black text-slate-300 tracking-widest text-center">PM10 Concentration (µg/m³)</div>
                <div className="flex w-64 h-2 rounded-full bg-gradient-to-r from-green-500/80 via-amber-400/80 to-red-600/80"></div>
-               <div className="flex justify-between text-[9px] font-bold text-slate-500 px-1">
-                  <span>&lt;60</span>
-                  <span>120</span>
-                  <span>&gt;200</span>
+               <div className="flex justify-between text-[9px] font-bold text-slate-400 px-1">
+                  <span>&lt;60 Low</span>
+                  <span>120 Mod</span>
+                  <span>&gt;200 Severe</span>
+               </div>
+               <div className="text-[7.5px] text-slate-400 font-mono tracking-wider text-center border-t border-slate-800/80 pt-1">
+                 *Empirical 2D Gaussian plume dispersion model — Not a certified lab measurement.
                </div>
              </div>
           )}
 
-          {/* Map Layer Controls */}
-          <div className="absolute top-6 right-6 z-30 bg-[#0f172a]/95 backdrop-blur-xl p-4 border border-slate-700/50 rounded shadow-2xl flex flex-col gap-2 w-44">
-            <div className="text-[10px] uppercase font-black text-slate-400 mb-2 border-b border-slate-700/50 pb-2 flex justify-between">
+          {/* Map Layer Controls & Style Switcher */}
+          <div className="absolute top-6 right-6 z-30 bg-[#0f172a]/95 backdrop-blur-xl p-4 border border-slate-700/50 rounded shadow-2xl flex flex-col gap-2 w-48">
+            <div className="text-[10px] uppercase font-black text-slate-400 mb-1 border-b border-slate-700/50 pb-2 flex justify-between">
               <span>Map Overlays</span><Layers className="w-3.5 h-3.5"/>
             </div>
+
+            {/* Map Style Toggle */}
+            <div className="flex bg-[#020617] rounded p-1 border border-slate-800 text-[10px] font-bold mb-2">
+              <button 
+                onClick={() => setMapStyle('aerial')}
+                className={cn("flex-1 py-1 rounded text-center transition-colors uppercase text-[9px] tracking-wider", mapStyle === 'aerial' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white')}
+              >
+                Aerial
+              </button>
+              <button 
+                onClick={() => setMapStyle('blueprint')}
+                className={cn("flex-1 py-1 rounded text-center transition-colors uppercase text-[9px] tracking-wider", mapStyle === 'blueprint' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white')}
+              >
+                Blueprint
+              </button>
+            </div>
+
             {Object.keys(mapLayers).map(layer => (
               <label key={layer} className="flex items-center gap-2.5 cursor-pointer hover:bg-slate-800/80 p-1.5 rounded transition-colors group">
                 <input type="checkbox" checked={mapLayers[layer]} onChange={() => setMapLayers(l => ({...l, [layer]: !l[layer]}))} className="accent-blue-500 w-3.5 h-3.5" />
@@ -984,16 +1164,19 @@ export default function App() {
             {mapLayers.sensors && SENSORS.map(sensor => {
               const data = sensors[sensor.id] || { pm10: 20, status: 'normal' };
               const isSelected = selectedSensorId === sensor.id;
+              const isHw = sensor.id === 'HW-ESP32';
               return (
                 <div key={sensor.id}
-                  className={cn("absolute w-5 h-5 transform -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] flex items-center justify-center cursor-pointer shadow-[0_0_15px_rgba(0,0,0,0.8)] z-20 hover:scale-125 bg-slate-900/90 transition-all duration-300",
+                  className={cn("absolute transform -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] flex items-center justify-center cursor-pointer shadow-[0_0_15px_rgba(0,0,0,0.8)] z-20 hover:scale-125 bg-slate-900/90 transition-all duration-300",
+                    isHw ? "w-6 h-6 border-purple-400 text-purple-300 ring-2 ring-purple-500/50" : "w-5 h-5",
                     isSelected ? "scale-125 ring-2 ring-white ring-offset-2 ring-offset-[#020617]" : "",
-                    data.status === 'critical' ? 'border-red-500 text-red-500 animate-pulse' : data.status === 'warning' ? 'border-amber-500 text-amber-500' : 'border-green-500 text-green-500'
+                    !isHw && (data.status === 'critical' ? 'border-red-500 text-red-500 animate-pulse' : data.status === 'warning' ? 'border-amber-500 text-amber-500' : 'border-green-500 text-green-500')
                   )}
                   style={{ left: `${sensor.x}%`, top: `${sensor.y}%` }}
                   onClick={(e) => { e.stopPropagation(); setSelectedSensorId(sensor.id); setSelectedWorkerId(null); }}
+                  title={`${sensor.name} (${sensor.type}) - PM10: ${Number(data.pm10).toFixed(0)} µg/m³`}
                 >
-                  <span className="text-[8px] font-black">{sensor.type === 'external' ? sensor.id : sensor.id.replace('S','')}</span>
+                  <span className="text-[8px] font-black">{isHw ? 'ESP' : (sensor.type === 'external' ? sensor.id : sensor.id.replace('S',''))}</span>
                 </div>
               );
             })}
@@ -1011,6 +1194,7 @@ export default function App() {
                   )}
                   style={{ left: `${worker.pos.x}%`, top: `${worker.pos.y}%` }}
                   onClick={(e) => { e.stopPropagation(); setSelectedWorkerId(worker.id); setSelectedSensorId(null); }}
+                  title={`${worker.id} (${worker.role}) - PM10: ${Number(worker.pm10).toFixed(0)} µg/m³`}
                 >
                   <HardHat className="w-3.5 h-3.5" />
                 </div>
@@ -1024,6 +1208,7 @@ export default function App() {
                 <div key={veh.id}
                   className="absolute w-8 h-8 transform -translate-x-1/2 -translate-y-1/2 rounded-md flex items-center justify-center shadow-[0_0_20px_rgba(0,0,0,0.9)] z-40 bg-[#090f1e] border-2 border-blue-500 transition-all duration-200 linear"
                   style={{ left: `${veh.pos.x}%`, top: `${veh.pos.y}%` }}
+                  title={`Mitigation Service: ${veh.serviceKey} (${veh.status})`}
                 >
                   <SvcIcon className="w-4 h-4 text-blue-400" />
                   {veh.status === 'arrived' && <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full animate-ping" />}
@@ -1031,8 +1216,6 @@ export default function App() {
               );
             })}
           </div>
-
-          {/* Map markers are now purely visual, selected item state highlights them but removes the overlay popup. */}
 
         </section>
 
@@ -1055,8 +1238,13 @@ export default function App() {
                )}>{story.title}</h3>
                
                <div className="flex flex-col gap-2.5 mb-4">
-                 <div className="flex justify-between items-center border-b border-slate-800/80 pb-2.5"><span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Source</span><span className="text-xs font-bold text-slate-200">{story.source}</span></div>
-                 <div className="text-xs text-slate-400 leading-relaxed font-medium"><span className="text-slate-500 font-bold uppercase tracking-wider mr-2">Cause:</span>{story.why}</div>
+                 <div className="flex justify-between items-center border-b border-slate-800/80 pb-2.5">
+                   <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Source</span>
+                   <span className="text-xs font-bold text-slate-200">{story.source}</span>
+                 </div>
+                 <div className="text-xs text-slate-400 leading-relaxed font-medium">
+                   <span className="text-slate-500 font-bold uppercase tracking-wider mr-2">Cause:</span>{story.why}
+                 </div>
                </div>
 
                {story.action !== 'Monitoring' && story.action !== 'Nominal' && (
@@ -1085,22 +1273,37 @@ export default function App() {
                      <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500"><div className="w-2 h-2 bg-red-500 rounded-full" /> {networkStats.crit}</div>
                    </div>
                  </div>
-                 <div className="px-5 pb-5 pt-1">
+                 <div className="px-5 pb-5 pt-1 overflow-y-auto custom-scrollbar flex-1">
                     <div className="flex flex-col gap-2.5">
                       {SENSORS.map(s => {
                         const data = sensors[s.id] || { pm10: 20, status: 'normal' };
+                        const isHw = s.id === 'HW-ESP32';
                         return (
                           <div key={s.id} onClick={() => {setSelectedSensorId(s.id); setSelectedWorkerId(null);}} 
-                               className={cn("bg-[#020617] border border-slate-800/80 rounded-lg p-3 flex items-center justify-between cursor-pointer hover:border-slate-600 transition-colors shadow-sm")}>
+                               className={cn("bg-[#020617] border rounded-lg p-3 flex items-center justify-between cursor-pointer hover:border-slate-600 transition-colors shadow-sm",
+                                 isHw ? "border-purple-800/80 bg-purple-950/20" : "border-slate-800/80"
+                               )}>
                             <div className="flex items-center gap-3">
-                              <div className={cn("w-2 h-2 rounded-full shrink-0", data.status === 'critical' ? 'bg-red-500 animate-pulse' : data.status === 'warning' ? 'bg-amber-500' : 'bg-green-500')} />
+                              <div className={cn("w-2 h-2 rounded-full shrink-0", 
+                                isHw ? "bg-purple-400" : (data.status === 'critical' ? 'bg-red-500 animate-pulse' : data.status === 'warning' ? 'bg-amber-500' : 'bg-green-500')
+                              )} />
                               <div>
-                                <div className="text-[11px] font-black text-white uppercase tracking-wider">{s.id} <span className="text-slate-500 font-bold ml-1">{s.name}</span></div>
-                                <div className="text-[9px] text-slate-500 font-bold tracking-widest uppercase mt-0.5">{s.zone}</div>
+                                <div className="text-[11px] font-black text-white uppercase tracking-wider">
+                                  {s.id} <span className="text-slate-500 font-bold ml-1">{s.name}</span>
+                                </div>
+                                <div className="text-[9px] text-slate-500 font-bold tracking-widest uppercase mt-0.5 flex items-center gap-1.5">
+                                  <span>{s.zone}</span>
+                                  <span>•</span>
+                                  <span className={cn(isHw ? "text-purple-400 font-black" : "text-slate-600")}>
+                                    {isHw ? 'ESP32 TELEMETRY' : (s.type === 'external' ? 'RECEPTOR (SIM)' : 'MESH (SIM)')}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className={cn("text-sm font-black tracking-wide", data.status === 'critical' ? 'text-red-400' : 'text-slate-200')}>{Number(data.pm10).toFixed(0)} <span className="text-[9px] text-slate-500 ml-0.5">µg</span></div>
+                              <div className={cn("text-sm font-black tracking-wide", data.status === 'critical' ? 'text-red-400' : 'text-slate-200')}>
+                                {Number(data.pm10).toFixed(0)} <span className="text-[9px] text-slate-500 ml-0.5">µg</span>
+                              </div>
                             </div>
                           </div>
                         );
@@ -1126,8 +1329,22 @@ export default function App() {
                          <div className={cn("w-3 h-3 rounded-full shrink-0 shadow-[0_0_10px_currentColor]", selectedSensorData.status === 'critical' ? 'bg-red-500 text-red-500 animate-pulse' : selectedSensorData.status === 'warning' ? 'bg-amber-500 text-amber-500' : 'bg-green-500 text-green-500')} />
                          <div>
                            <div className="text-lg font-black text-white uppercase tracking-wider">{selectedSensor.id} - {selectedSensor.name}</div>
-                           <div className="text-[10px] text-slate-500 font-bold tracking-widest uppercase mt-1">{selectedSensor.type === 'external' ? 'Residential Receptor' : 'Fixed Sensor'} • {selectedSensor.zone}</div>
+                           <div className="text-[10px] text-slate-500 font-bold tracking-widest uppercase mt-1">
+                             {selectedSensor.id === 'HW-ESP32' ? 'IoT Hardware Node' : (selectedSensor.type === 'external' ? 'Residential Receptor' : 'Fixed Sensor')} • {selectedSensor.zone}
+                           </div>
                          </div>
+                      </div>
+
+                      {/* Provenance Banner */}
+                      <div className={cn("p-2.5 rounded-lg border mb-4 text-[10px] font-mono tracking-wider flex items-center gap-2",
+                        selectedSensor.id === 'HW-ESP32' ? "bg-purple-950/30 border-purple-800/50 text-purple-300" : "bg-slate-900/60 border-slate-800 text-slate-400"
+                      )}>
+                        <Radio className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          {selectedSensor.id === 'HW-ESP32' 
+                            ? 'DATA PROVENANCE: ESP32 REST Ingestion (Port 3001)' 
+                            : 'DATA PROVENANCE: 2D Synthetic Sensor Mesh Simulation'}
+                        </span>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-3 mb-4">
