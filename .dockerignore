@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+*.log
+__pycache__
+.venv
+venv
+private_uploads
+backend/private_uploads

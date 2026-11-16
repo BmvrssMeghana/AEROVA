@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aerova}
+      POSTGRES_USER: ${POSTGRES_USER:-aerova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-local-password}
+    volumes:
+      - aerova-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aerova} -d ${POSTGRES_DB:-aerova}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aerova}:${POSTGRES_PASSWORD:-change-this-local-password}@db:5432/${POSTGRES_DB:-aerova}
+      AEROVA_SECRET_KEY: ${AEROVA_SECRET_KEY:-replace-with-a-long-random-secret-for-local-use}
+      AEROVA_ENV: ${AEROVA_ENV:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
+      AEROVA_UPLOAD_DIR: /data/private_uploads
+    volumes:
+      - aerova-uploads:/data/private_uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+  web:
+    build:
+      context: .
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+volumes:
+  aerova-postgres:
+  aerova-uploads:

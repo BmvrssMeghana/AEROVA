@@ -13,6 +13,7 @@ dist-ssr
 *.local
 .env
 .env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -35,6 +36,8 @@ __pycache__/
 *.py[cod]
 .cache
 coverage
+*.db
+private_uploads/
 
 # OS artifacts
 Thumbs.db
