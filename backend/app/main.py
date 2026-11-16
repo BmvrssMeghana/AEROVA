@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
-from sqlalchemy import desc, func, select, update
+from sqlalchemy import desc, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .db import Base, engine, get_db
@@ -391,13 +391,31 @@ def site_risk(site_id: str, user: User = Depends(current_user), db: Session = De
     known=[x["score"] for x in rows if x.get("score") is not None]
     return {"site_id":site.id,"overall":max(known) if known else None,"level":max(rows,key=lambda x:(x.get("score") or -1))["level"] if known else "UNKNOWN","zones":rows,"calculated_at":now().isoformat()}
 
+@app.get(f"{API}/sites/{{site_id}}/devices")
+def list_devices(site_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    site=site_for_user(db,user,site_id)
+    rows=[]
+    for d in db.query(Device).filter_by(site_id=site.id).order_by(Device.name).all():
+        fresh=bool(d.last_seen_at and d.last_seen_at>=now()-timedelta(seconds=60))
+        rows.append({"id":d.id,"device_uid":d.device_uid,"name":d.name,"device_type":d.device_type,"source_type":d.source_type,"zone_id":d.zone_id,"enabled":d.enabled,"last_seen_at":d.last_seen_at.isoformat() if d.last_seen_at else None,"status":"CONNECTED" if fresh else "OFFLINE" if d.last_seen_at else "NO DATA"})
+    return rows
+
 @app.get(f"{API}/sites/{{site_id}}/overview")
-def overview(site_id: str, range: str = "24 hours", user: User = Depends(current_user), db: Session = Depends(get_db)):
-    site=site_for_user(db,user,site_id); zones=db.query(Zone).filter_by(site_id=site.id).order_by(Zone.code).all(); latest=latest_by_zone(db,site.id)
+def overview(site_id: str, range: str = "24 hours", source: str | None = None, zone_id: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    site=site_for_user(db,user,site_id); zones=db.query(Zone).filter_by(site_id=site.id).order_by(Zone.code).all()
+    if zone_id and zone_id not in {z.id for z in zones}: raise HTTPException(404,"Zone not found")
+    source_value=source.upper() if source and source.upper() not in ("ALL","") else None
+    latest_q=db.query(TelemetryEvent).filter_by(site_id=site.id)
+    if zone_id: latest_q=latest_q.filter_by(zone_id=zone_id)
+    if source_value: latest_q=latest_q.filter_by(source_type=source_value)
+    latest=latest_q.order_by(desc(TelemetryEvent.received_at)).first()
     risk=site_risk_compute(site,zones,db); alerts=db.query(Alert).filter_by(site_id=site.id,status="ACTIVE").count()
     fresh=db.query(Device).filter_by(site_id=site.id,enabled=True).filter(Device.last_seen_at >= now()-timedelta(seconds=60)).count()
     since=now()-timedelta(days=1 if range in ("24 hours","Today") else 7 if range=="7 days" else 30)
-    events=db.query(TelemetryEvent).filter(TelemetryEvent.site_id==site.id,TelemetryEvent.received_at>=since).order_by(TelemetryEvent.received_at).limit(1000).all()
+    event_q=db.query(TelemetryEvent).filter(TelemetryEvent.site_id==site.id,TelemetryEvent.received_at>=since)
+    if zone_id: event_q=event_q.filter(TelemetryEvent.zone_id==zone_id)
+    if source_value: event_q=event_q.filter(TelemetryEvent.source_type==source_value)
+    events=event_q.order_by(TelemetryEvent.received_at).limit(1000).all()
     series=[]
     for e in events:
         m=e.metrics or {}
@@ -494,6 +512,50 @@ def create_report(site_id:str,body:dict[str,Any],user:User=Depends(current_user)
     content=output.getvalue().encode("utf-8");filename=f"aerova-{report_type.lower()}-{record.id[:8]}.csv"
     return StreamingResponse(io.BytesIO(content),media_type="text/csv",headers={"Content-Disposition":f'attachment; filename="{filename}"',"X-Report-ID":record.id,"X-Data-Gaps":str(max(0,1-len(events)))})
 
+@app.get(f"{API}/search")
+def universal_search(q: str = "", limit: int = 20, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    term=(q or "").strip()
+    if len(term)<2: return {"results":[]}
+    like=f"%{term}%"; cap=min(max(limit,1),25); out=[]
+    def add(kind, item_id, title, subtitle, target, site_id=None):
+        if len(out)<cap: out.append({"type":kind,"id":item_id,"title":title,"subtitle":subtitle or "","target":target,"site_id":site_id})
+    if platform_admin(db, user):
+        for org in db.query(Organization).filter(Organization.name.ilike(like)).limit(cap): add("customer",org.id,org.name,org.status,"customers")
+        for s,o in db.query(Site,Organization).join(Organization,Organization.id==Site.organization_id).filter(or_(Site.name.ilike(like),Site.code.ilike(like),Site.address.ilike(like))).limit(cap): add("project",s.id,s.name,o.name,"projects",s.id)
+        for person,m,org in db.query(User,Membership,Organization).join(Membership,Membership.user_id==User.id).join(Organization,Organization.id==Membership.organization_id).filter(Membership.role.in_(["CUSTOMER_MANAGER","SITE_MANAGER","WATER_DRIVER"]),or_(User.full_name.ilike(like),User.email.ilike(like))).limit(cap): add("person",person.id,person.full_name,f"{m.role} · {org.name}","users")
+        return {"results":out[:cap]}
+    if role_for_user(db,user)=="WATER_DRIVER":
+        for t in db.query(WaterTask).filter(WaterTask.accepted_by==user.id,or_(WaterTask.title.ilike(like),WaterTask.id.ilike(like),WaterTask.destination.ilike(like))).order_by(desc(WaterTask.created_at)).limit(cap):
+            site=db.get(Site,t.site_id); add("task",t.id,t.title,site.name if site else t.status,"tasks",t.site_id)
+        return {"results":out}
+    site_ids=set()
+    for m in db.query(Membership).filter_by(user_id=user.id,status="ACTIVE"):
+        if m.role=="CUSTOMER_MANAGER": site_ids.update(s.id for s in db.query(Site).filter_by(organization_id=m.organization_id))
+        elif m.role=="SITE_MANAGER": site_ids.update(x.site_id for x in db.query(SiteMembership).filter_by(user_id=user.id,role="SITE_MANAGER"))
+    if not site_ids: return {"results":[]}
+    scoped=Site.id.in_(site_ids)
+    for s in db.query(Site).filter(scoped,or_(Site.name.ilike(like),Site.code.ilike(like),Site.address.ilike(like))).limit(cap): add("project",s.id,s.name,s.code,"overview",s.id)
+    for z,s in db.query(Zone,Site).join(Site,Site.id==Zone.site_id).filter(Zone.site_id.in_(site_ids),or_(Zone.name.ilike(like),Zone.code.ilike(like))).limit(cap): add("zone",z.id,z.name,s.name,"map",s.id)
+    for d,s in db.query(Device,Site).join(Site,Site.id==Device.site_id).filter(Device.site_id.in_(site_ids),or_(Device.name.ilike(like),Device.device_uid.ilike(like))).limit(cap): add("device",d.id,d.name,d.device_uid,"management",s.id)
+    for a,s in db.query(Alert,Site).join(Site,Site.id==Alert.site_id).filter(Alert.site_id.in_(site_ids),or_(Alert.title.ilike(like),Alert.id.ilike(like))).limit(cap): add("alert",a.id,a.title,s.name,"alerts",s.id)
+    for i,s in db.query(Intervention,Site).join(Site,Site.id==Intervention.site_id).filter(Intervention.site_id.in_(site_ids),or_(Intervention.intervention_type.ilike(like),Intervention.id.ilike(like))).limit(cap): add("intervention",i.id,i.intervention_type,s.name,"interventions",s.id)
+    for r,s in db.query(Report,Site).join(Site,Site.id==Report.site_id).filter(Report.site_id.in_(site_ids),or_(Report.report_type.ilike(like),Report.id.ilike(like))).limit(cap): add("report",r.id,r.report_type,s.name,"reports",s.id)
+    org_ids={m.organization_id for m in db.query(Membership).filter_by(user_id=user.id,status="ACTIVE")}
+    for person,m in db.query(User,Membership).join(Membership,Membership.user_id==User.id).filter(Membership.organization_id.in_(org_ids),Membership.role.in_(["SITE_MANAGER","WATER_DRIVER"]),or_(User.full_name.ilike(like),User.email.ilike(like))).limit(cap):
+        add("person",person.id,person.full_name,m.role,"resources" if m.role=="WATER_DRIVER" else "management")
+    for t,s in db.query(WaterTask,Site).join(Site,Site.id==WaterTask.site_id).filter(WaterTask.site_id.in_(site_ids),or_(WaterTask.title.ilike(like),WaterTask.id.ilike(like))).limit(cap): add("task",t.id,t.title,s.name,"resources",s.id)
+    return {"results":out[:cap]}
+
+@app.get(f"{API}/organizations/{{organization_id}}/alerts")
+def organization_alerts(organization_id:str,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    require_role(membership_for(db,user,organization_id),ROLES_ADMIN)
+    ids=[s.id for s in db.query(Site).filter_by(organization_id=organization_id)]
+    if not ids: return []
+    rows=[]
+    for a,s in db.query(Alert,Site).join(Site,Site.id==Alert.site_id).filter(Alert.site_id.in_(ids)).order_by(desc(Alert.created_at)).limit(100):
+        rows.append({**alert_json(a),"site_id":s.id,"site_name":s.name})
+    return rows
+
 @app.get(f"{API}/notifications")
 def notifications(user:User=Depends(current_user),db:Session=Depends(get_db)):
     org_ids=[x["id"] for x in orgs_for(db,user)];return [{"id":n.id,"site_id":n.site_id,"payload":n.payload,"read_at":n.read_at.isoformat() if n.read_at else None,"created_at":n.created_at.isoformat()} for n in db.query(Notification).filter(Notification.user_id==user.id,Notification.organization_id.in_(org_ids)).order_by(desc(Notification.created_at)).limit(100).all()]
@@ -517,7 +579,7 @@ def platform_audit(db,user,action,object_type,object_id,reason,details=None):
 @app.get(f"{API}/platform/overview")
 def platform_overview(user:User=Depends(current_user),db:Session=Depends(get_db)):
     require_platform_admin(db,user)
-    return {"total_customers":db.query(Organization).count(),"active_customers":db.query(Organization).filter_by(status="ACTIVE").count(),"active_projects":db.query(Site).filter(Site.status=="ACTIVE").count(),"site_managers":db.query(Membership).filter_by(role="SITE_MANAGER").count(),"water_drivers":db.query(Membership).filter_by(role="WATER_DRIVER").count(),"connected_devices":db.query(Device).filter(Device.enabled==True,Device.last_seen_at>=now()-timedelta(seconds=60)).count(),"critical_alert_sites":db.query(Alert.site_id).filter_by(status="ACTIVE",severity="CRITICAL").distinct().count(),"recent_activity":[{"action":x.action,"object_type":x.object_type,"created_at":x.created_at.isoformat()} for x in db.query(PlatformAuditLog).order_by(desc(PlatformAuditLog.created_at)).limit(12).all()]}
+    return {"total_customers":db.query(Organization).count(),"active_customers":db.query(Organization).filter_by(status="ACTIVE").count(),"active_projects":db.query(Site).filter(Site.status=="ACTIVE").count(),"customer_managers":db.query(Membership).filter_by(role="CUSTOMER_MANAGER").count(),"site_managers":db.query(Membership).filter_by(role="SITE_MANAGER").count(),"water_drivers":db.query(Membership).filter_by(role="WATER_DRIVER").count(),"active_water_drivers":db.query(DriverProfile).filter_by(availability="ACTIVE").count(),"connected_devices":db.query(Device).filter(Device.enabled==True,Device.last_seen_at>=now()-timedelta(seconds=60)).count(),"critical_alert_sites":db.query(Alert.site_id).filter_by(status="ACTIVE",severity="CRITICAL").distinct().count(),"recent_activity":[{"action":x.action,"object_type":x.object_type,"created_at":x.created_at.isoformat()} for x in db.query(PlatformAuditLog).order_by(desc(PlatformAuditLog.created_at)).limit(12).all()]}
 
 @app.get(f"{API}/platform/customers")
 def platform_customers(search:str|None=None,status_filter:str|None=None,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -552,7 +614,20 @@ def platform_projects(search:str|None=None,status_filter:str|None=None,user:User
     require_platform_admin(db,user);q=db.query(Site,Organization).join(Organization,Organization.id==Site.organization_id)
     if search:q=q.filter((Site.name.ilike(f"%{search}%"))|(Site.address.ilike(f"%{search}%"))|(Organization.name.ilike(f"%{search}%")))
     if status_filter:q=q.filter(Site.status==status_filter.upper())
-    return [{"id":s.id,"name":s.name,"customer":o.name,"location":s.address,"status":s.status,"created_at":s.created_at.isoformat()} for s,o in q.order_by(desc(Site.created_at)).limit(1000).all()]
+    output=[]
+    for s,o in q.order_by(desc(Site.created_at)).limit(1000).all():
+        sm=db.query(User).join(SiteMembership,SiteMembership.user_id==User.id).filter(SiteMembership.site_id==s.id,SiteMembership.role=="SITE_MANAGER").first()
+        output.append({"id":s.id,"name":s.name,"customer":o.name,"location":s.address,"status":s.status,"site_manager":sm.full_name if sm else "Unassigned","created_at":s.created_at.isoformat()})
+    return output
+
+@app.post(f"{API}/platform/projects/{{site_id}}/read-only")
+def platform_project_read_only(site_id:str,body:dict[str,Any],user:User=Depends(current_user),db:Session=Depends(get_db)):
+    require_platform_admin(db,user);site=db.get(Site,site_id)
+    if not site:raise HTTPException(404,"Project not found")
+    org=db.get(Organization,site.organization_id);reason=str(body.get("reason","Support audit inspection"))
+    platform_audit(db,user,"READ_ONLY_PROJECT_VIEW","site",site.id,reason,{"project_name":site.name,"customer":org.name if org else None});db.commit()
+    sm=db.query(User).join(SiteMembership,SiteMembership.user_id==User.id).filter(SiteMembership.site_id==site.id,SiteMembership.role=="SITE_MANAGER").first()
+    return {"id":site.id,"name":site.name,"code":site.code,"customer":org.name if org else "Unknown","address":site.address,"status":site.status,"site_manager":sm.full_name if sm else "Unassigned","area":site.area,"latitude":site.latitude,"longitude":site.longitude,"start_date":site.start_date.isoformat() if site.start_date else None,"completion_date":site.completion_date.isoformat() if site.completion_date else None,"read_only":True,"access_reason":reason}
 
 @app.get(f"{API}/platform/users")
 def platform_users(search:str|None=None,user:User=Depends(current_user),db:Session=Depends(get_db)):
