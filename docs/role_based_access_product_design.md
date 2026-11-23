@@ -1,6 +1,6 @@
 # AEROVA Role-Based Product Design
 
-**Status:** Requirements and architecture proposal; no role implementation is included in this document change.  
+**Status:** Architecture baseline; role-specific implementation is present in the application, with remaining gaps tracked in `implementation_status.md`.
 **Baseline:** AEROVA Final SRS v1.1 plus the user's role-based UX brief.  
 **Purpose:** Reviewable design deliverable to approve before implementation.
 
@@ -10,7 +10,7 @@ The SRS remains the baseline for site onboarding, monitoring, provenance, alerts
 
 Use exactly these primary role labels in the product: **AEROVA Admin**, **Customer Manager**, **Site Manager**, and **Water Driver**. Existing implementation strings such as `ORGANIZATION_ADMIN`, `PROJECT_MANAGER`, `SITE_OPERATOR`, `EHS_OFFICER`, `MAINTENANCE`, and `VIEWER` are legacy roles and must not remain user-facing primary roles. During migration, map the organization's current `ORGANIZATION_ADMIN` to `CUSTOMER_MANAGER`; map project/site operators to `SITE_MANAGER` only after explicit site assignment; do not silently map viewers to a privileged role. AEROVA Admin is a separate platform-level grant, never an organization membership role.
 
-Current repository state (from `docs/implementation_status.md`, frontend, and SQLAlchemy models): React/Vite and FastAPI are present; organization and site memberships, sites/zones/assets, device credentials, telemetry, alerts, intervention drafts, reports, invitations, notifications, and audit logs exist. Current signup creates a customer organization and its first organization administrator. There is no AEROVA Admin console, distinct Customer Manager/Site Manager/Water Driver experience, driver profile/availability, water-task lifecycle, atomic task claiming, platform-wide customer control plane, or enforceable fine-grained permission matrix. Some site modules remain empty-state shells. The Mapbox base map is conditional; boundary editing, live device overlays, and navigation are not complete. Wokwi remains a remote reference with no configured authenticated telemetry transport. These are implementation gaps, not claims of shipped capability.
+Current repository state: React/Vite and FastAPI provide separate AEROVA Admin, Customer Manager, Site Manager, and Water Driver entry experiences. Organization/site memberships, role-scoped routes, platform administration, invitation and assignment workflows, driver availability, water-task transitions, task offers, telemetry, alerts, interventions, reports, notifications, and audit records are represented in the application. The supplied synthetic seed is isolated in PostgreSQL schema `aerova_demo`; application-owned records use migrated tables in `public`. Some resource screens still have data-empty states. The Mapbox base map is conditional; boundary editing, live device overlays, and routing are not complete. Wokwi remains a remote reference with no configured authenticated telemetry transport. These limits are implementation gaps, not claims of shipped capability.
 
 ### Sensible defaults / ambiguities resolved
 

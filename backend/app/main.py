@@ -17,7 +17,10 @@ from .schemas import AlertAction, CustomerCreate, DemoRequestCreate, DeviceProvi
 from .security import current_user, create_access_token, hash_password, membership_for, platform_admin, require_platform_admin, require_role, site_for_user, verify_password
 
 app = FastAPI(title="AEROVA API", version="1.0.0", openapi_url="/api/v1/openapi.json", docs_url="/api/v1/docs")
-app.add_middleware(CORSMiddleware, allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(","), allow_credentials=True, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "X-Device-Credential", "X-Request-ID"])
+allowed_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()]
+default_local_origin_regex = "" if os.getenv("AEROVA_ENV", "development").lower() == "production" else r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+local_origin_regex = os.getenv("CORS_ORIGIN_REGEX", default_local_origin_regex) or None
+app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_origin_regex=local_origin_regex, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "X-Device-Credential", "X-Request-ID"])
 API = "/api/v1"
 UPLOAD_ROOT = Path(os.getenv("AEROVA_UPLOAD_DIR", "./private_uploads")).resolve()
 ROLES_ADMIN = {"CUSTOMER_MANAGER"}
@@ -291,11 +294,11 @@ def provision_device(body: DeviceProvision, user: User = Depends(current_user), 
     db.add(device); audit(db, site.organization_id, user.id, "DEVICE_PROVISIONED", "device", device.id, {"device_uid": body.device_uid, "source_type": body.source_type}); db.commit(); db.refresh(device)
     return {"id": device.id, "device_uid": device.device_uid, "credential": credential, "warning": "Copy this credential now. It is only shown once."}
 
-METRIC_RANGES = {"pm10_ug_m3": (0, 5000), "pm25_ug_m3": (0, 2500), "temperature_c": (-50, 80), "humidity_pct": (0, 100), "wind_speed_kmh": (0, 250), "wind_direction_deg": (0, 360), "soil_moisture_pct": (0, 100), "tank_level_pct": (0, 100), "water_flow_lpm": (0, 10000), "gas_raw_pct": (0, 100), "vibration_level": (0, 100000)}
+METRIC_RANGES = {"pm10_ug_m3": (0, 5000), "pm25_ug_m3": (0, 2500), "temperature_c": (-50, 80), "humidity_pct": (0, 100), "wind_speed_kmh": (0, 250), "wind_direction_deg": (0, 360), "soil_moisture_pct": (0, 100), "tank_level_pct": (0, 100), "water_flow_lpm": (0, 10000), "rain_mm_h": (0, 500), "worker_count": (0, 10000), "vehicle_count": (0, 10000), "gas_raw_pct": (0, 100), "gas_ppm": (0, 100000), "vibration_level": (0, 100000), "vibration_mm_s": (0, 100000), "vibration_g": (0, 1000)}
 
 def normalize_metrics(input_metrics):
     clean, invalid = {}, []
-    aliases = {"pm10_ugm3":"pm10_ug_m3", "pm25_ugm3":"pm25_ug_m3", "wind_dir_deg":"wind_direction_deg", "wind_direction":"wind_direction_sector", "activity":"activity_type", "total_water_litres":"cumulative_water_litres_device", "gas_simulated_pct":"gas_raw_pct"}
+    aliases = {"pm10_ugm3":"pm10_ug_m3", "pm25_ugm3":"pm25_ug_m3", "wind_dir_deg":"wind_direction_deg", "wind_direction":"wind_direction_sector", "activity":"activity_type", "total_water_litres":"cumulative_water_litres_device", "gas_simulated_pct":"gas_raw_pct", "rainfall_mm_h":"rain_mm_h", "precipitation_mm_h":"rain_mm_h", "workers_present":"worker_count", "worker_presence_count":"worker_count", "vehicle_events":"vehicle_count", "vehicles":"vehicle_count", "equipment_status":"equipment_state"}
     for key, raw in input_metrics.items():
         name = aliases.get(key, key)
         if name in METRIC_RANGES:
@@ -305,8 +308,11 @@ def normalize_metrics(input_metrics):
             low, high = METRIC_RANGES[name]
             if not low <= number <= high: clean[name] = None; invalid.append(name); continue
             clean[name] = round(number, 3)
-        elif name in ("wind_direction_sector", "activity_type"):
+        elif name in ("wind_direction_sector", "activity_type", "equipment_state", "vehicle_movement"):
             clean[name] = str(raw)[:64] if raw is not None else None
+        elif name in ("worker_presence", "worker_present", "vehicle_detected", "rain_detected"):
+            if isinstance(raw, bool): clean[name] = raw
+            else: invalid.append(name)
         elif name in ("cumulative_water_litres_device",):
             try: clean[name] = max(0, round(float(raw), 3)) if raw is not None else None
             except (TypeError, ValueError): clean[name] = None; invalid.append(name)
@@ -338,10 +344,18 @@ def ingest_telemetry(body: Telemetry, x_device_credential: str | None = Header(d
     return {"status":"accepted", "event_id":body.event_id, "received_at_utc":received.isoformat(), "quality":"INVALID_FIELDS" if invalid else "VALID", "invalid_fields":invalid, "site_id":device.site_id, "zone_id":device.zone_id}
 
 @app.get(f"{API}/sites/{{site_id}}/telemetry")
-def telemetry_history(site_id: str, limit: int = 100, source_type: str | None = None, zone_id: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def telemetry_history(site_id: str, limit: int = 100, source_type: str | None = None, zone_id: str | None = None, range: str | None = None, device_uid: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     site=site_for_user(db,user,site_id); q=db.query(TelemetryEvent).filter_by(site_id=site.id)
     if source_type: q=q.filter_by(source_type=source_type.upper())
     if zone_id: q=q.filter_by(zone_id=zone_id)
+    if range:
+        days={"today":1,"24 hours":1,"7 days":7,"30 days":30}.get(range.lower())
+        if days is None: raise HTTPException(422,"Range must be Today, 24 hours, 7 days or 30 days")
+        q=q.filter(TelemetryEvent.received_at>=now()-timedelta(days=days))
+    if device_uid:
+        device=db.query(Device).filter_by(site_id=site.id,device_uid=device_uid).first()
+        if not device: raise HTTPException(404,"Device not found")
+        q=q.filter_by(device_id=device.id)
     records=q.order_by(desc(TelemetryEvent.received_at)).limit(min(max(limit,1),1000)).all()
     return {"items":[event_json(x) for x in reversed(records)],"count":len(records)}
 
@@ -400,21 +414,53 @@ def list_devices(site_id: str, user: User = Depends(current_user), db: Session =
         rows.append({"id":d.id,"device_uid":d.device_uid,"name":d.name,"device_type":d.device_type,"source_type":d.source_type,"zone_id":d.zone_id,"enabled":d.enabled,"last_seen_at":d.last_seen_at.isoformat() if d.last_seen_at else None,"status":"CONNECTED" if fresh else "OFFLINE" if d.last_seen_at else "NO DATA"})
     return rows
 
+@app.patch(f"{API}/devices/{{device_id}}")
+def update_device(device_id: str, body: dict[str, Any], user: User = Depends(current_user), db: Session = Depends(get_db)):
+    device=db.get(Device,device_id)
+    if not device: raise HTTPException(404,"Device not found")
+    site=site_for_user(db,user,device.site_id)
+    require_role(membership_for(db,user,site.organization_id),ROLES_OPERATOR)
+    if not body or not set(body).issubset({"zone_id","name","device_type","firmware_version"}):
+        raise HTTPException(422,"Only device metadata and site-level zone assignment can be updated")
+    if "zone_id" in body:
+        zone_id=body["zone_id"]
+        if zone_id is not None and not db.query(Zone).filter_by(id=zone_id,site_id=site.id).first():
+            raise HTTPException(422,"Zone does not belong to this site")
+        device.zone_id=zone_id
+    limits={"name":180,"device_type":80,"firmware_version":80}
+    for key in ("name","device_type","firmware_version"):
+        if key in body:
+            value=body[key]
+            if not isinstance(value,str) or not value.strip() or len(value)>limits[key]:
+                raise HTTPException(422,f"{key} must be a non-empty string of at most {limits[key]} characters")
+            setattr(device,key,value.strip())
+    audit(db,site.organization_id,user.id,"DEVICE_UPDATED","device",device.id,{"fields":list(body.keys())})
+    db.commit();db.refresh(device)
+    return {"id":device.id,"device_uid":device.device_uid,"name":device.name,"device_type":device.device_type,"firmware_version":device.firmware_version,"zone_id":device.zone_id,"source_type":device.source_type}
+
 @app.get(f"{API}/sites/{{site_id}}/overview")
-def overview(site_id: str, range: str = "24 hours", source: str | None = None, zone_id: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def overview(site_id: str, range: str = "24 hours", source: str | None = None, zone_id: str | None = None, device_uid: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     site=site_for_user(db,user,site_id); zones=db.query(Zone).filter_by(site_id=site.id).order_by(Zone.code).all()
     if zone_id and zone_id not in {z.id for z in zones}: raise HTTPException(404,"Zone not found")
+    selected_device=None
+    if device_uid:
+        selected_device=db.query(Device).filter_by(site_id=site.id,device_uid=device_uid).first()
+        if not selected_device: raise HTTPException(404,"Device not found")
     source_value=source.upper() if source and source.upper() not in ("ALL","") else None
     latest_q=db.query(TelemetryEvent).filter_by(site_id=site.id)
     if zone_id: latest_q=latest_q.filter_by(zone_id=zone_id)
     if source_value: latest_q=latest_q.filter_by(source_type=source_value)
+    if selected_device: latest_q=latest_q.filter_by(device_id=selected_device.id)
     latest=latest_q.order_by(desc(TelemetryEvent.received_at)).first()
     risk=site_risk_compute(site,zones,db); alerts=db.query(Alert).filter_by(site_id=site.id,status="ACTIVE").count()
-    fresh=db.query(Device).filter_by(site_id=site.id,enabled=True).filter(Device.last_seen_at >= now()-timedelta(seconds=60)).count()
+    fresh_q=db.query(Device).filter_by(site_id=site.id,enabled=True).filter(Device.last_seen_at >= now()-timedelta(seconds=60))
+    if selected_device: fresh_q=fresh_q.filter_by(id=selected_device.id)
+    fresh=fresh_q.count()
     since=now()-timedelta(days=1 if range in ("24 hours","Today") else 7 if range=="7 days" else 30)
     event_q=db.query(TelemetryEvent).filter(TelemetryEvent.site_id==site.id,TelemetryEvent.received_at>=since)
     if zone_id: event_q=event_q.filter(TelemetryEvent.zone_id==zone_id)
     if source_value: event_q=event_q.filter(TelemetryEvent.source_type==source_value)
+    if selected_device: event_q=event_q.filter_by(device_id=selected_device.id)
     events=event_q.order_by(TelemetryEvent.received_at).limit(1000).all()
     series=[]
     for e in events:
@@ -501,10 +547,18 @@ def report_history(site_id:str,user:User=Depends(current_user),db:Session=Depend
 @app.post(f"{API}/sites/{{site_id}}/reports",status_code=201)
 def create_report(site_id:str,body:dict[str,Any],user:User=Depends(current_user),db:Session=Depends(get_db)):
     site=site_for_user(db,user,site_id);require_role(membership_for(db,user,site.organization_id),{"CUSTOMER_MANAGER","SITE_MANAGER"})
-    report_type=body.get("report_type","DAILY").upper();include_sim=bool(body.get("include_simulation",False));q=db.query(TelemetryEvent).filter_by(site_id=site.id)
-    if not include_sim:q=q.filter(TelemetryEvent.source_type=="PHYSICAL")
+    report_type=body.get("report_type","DAILY").upper()
+    if report_type not in {"DAILY","WEEKLY","MONTHLY"}:raise HTTPException(422,"Report type must be DAILY, WEEKLY or MONTHLY")
+    range_value=body.get("range","24 hours")
+    range_days={"today":1,"24 hours":1,"7 days":7,"30 days":30}.get(str(range_value).lower())
+    if range_days is None:raise HTTPException(422,"Range must be Today, 24 hours, 7 days or 30 days")
+    source_value=str(body.get("source","PHYSICAL")).upper()
+    if source_value not in {"ALL","PHYSICAL","SIMULATION"}:raise HTTPException(422,"Source must be ALL, PHYSICAL or SIMULATION")
+    include_sim=source_value in {"ALL","SIMULATION"}
+    q=db.query(TelemetryEvent).filter_by(site_id=site.id).filter(TelemetryEvent.received_at>=now()-timedelta(days=range_days))
+    if source_value!="ALL":q=q.filter(TelemetryEvent.source_type==source_value)
     events=q.order_by(TelemetryEvent.received_at).all()
-    record=Report(organization_id=site.organization_id,site_id=site.id,report_type=report_type,parameters={**body,"include_simulation":include_sim,"event_count":len(events),"created_at":now().isoformat()},creator_id=user.id)
+    record=Report(organization_id=site.organization_id,site_id=site.id,report_type=report_type,parameters={**body,"source":source_value,"include_simulation":include_sim,"event_count":len(events),"created_at":now().isoformat()},creator_id=user.id)
     db.add(record);audit(db,site.organization_id,user.id,"REPORT_CREATED","report",record.id,record.parameters);db.commit();db.refresh(record)
     output=io.StringIO();writer=csv.writer(output);writer.writerow(["received_at_utc","device_uid","zone_id","source_type","quality","pm25_ug_m3","pm10_ug_m3","temperature_c","humidity_pct","wind_speed_kmh","tank_level_pct","water_flow_lpm"])
     for e in events:
@@ -729,7 +783,7 @@ def driver_availability(body:dict[str,str],user:User=Depends(current_user),db:Se
     if role_for_user(db,user)!="WATER_DRIVER":raise HTTPException(403,"Water Driver access is required")
     state=body.get("availability")
     if state not in ("ACTIVE","INACTIVE"):raise HTTPException(422,"Availability must be ACTIVE or INACTIVE")
-    profile=db.query(DriverProfile).filter_by(user_id=user.id).first()
+    profile=db.query(DriverProfile).filter_by(user_id=user.id).with_for_update().first()
     if not profile:profile=DriverProfile(user_id=user.id);db.add(profile)
     profile.availability=state;profile.availability_updated_at=now();db.commit();return {"availability":state,"updated_at":profile.availability_updated_at.isoformat()}
 
@@ -748,6 +802,8 @@ def driver_tasks(user:User=Depends(current_user),db:Session=Depends(get_db)):
 @app.post(f"{API}/water-task-offers/{{offer_id}}/accept")
 def accept_water_offer(offer_id:str,user:User=Depends(current_user),db:Session=Depends(get_db)):
     if role_for_user(db,user)!="WATER_DRIVER":raise HTTPException(403,"Water Driver access is required")
+    profile=db.query(DriverProfile).filter_by(user_id=user.id).with_for_update().first()
+    if not profile or profile.availability!="ACTIVE":raise HTTPException(409,"Go active before accepting a new task")
     offer=db.query(WaterTaskOffer).filter_by(id=offer_id,driver_id=user.id).with_for_update().first()
     if not offer:raise HTTPException(404,"Task offer not found")
     if offer.status!="OFFERED" or offer.expires_at<now():offer.status="EXPIRED";db.commit();raise HTTPException(409,"This offer has expired")

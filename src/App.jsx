@@ -11,6 +11,7 @@ import './App.css';
 import { AdminConsole, CustomerConsole, DriverApp, InvitationActivation, SiteWaterOperations } from './RoleDashboards.jsx';
 
 const API = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '');
+const EMPTY_LIST = [];
 
 const SITE_MANAGER_NAV = [
   ['overview', 'Overview', Gauge],
@@ -518,13 +519,13 @@ function AuthPage({ mode, go, onAuth }) {
   );
 }
 
-function SetupPage({ data, setData, step, setStep, save, skip }) {
+function SetupPage({ data, setData, step, setStep, save, skip, saving, error }) {
   const names = ['Organization', 'Site details', 'Layout', 'Map configuration', 'Zones & activities', 'Devices & team', 'Thresholds', 'Readiness'];
   return (
     <div className="setup-page">
       <header>
         <Brand onClick={skip} />
-        <button className="plain-button" onClick={skip}>Save and exit</button>
+        <button className="plain-button" onClick={skip}>Exit setup</button>
       </header>
       <div className="setup-progress">
         <small>SETUP <b>{String(step + 1).padStart(2, '0')}</b> / 08</small>
@@ -632,9 +633,10 @@ function SetupPage({ data, setData, step, setStep, save, skip }) {
           {step < 7 ? (
             <Button variant="primary" onClick={() => setStep(step + 1)}>Continue <ArrowRight size={16} /></Button>
           ) : (
-            <Button variant="primary" onClick={save}>Launch site workspace <ArrowRight size={16} /></Button>
+            <Button variant="primary" onClick={save} disabled={saving}>{saving ? 'Saving setup…' : 'Launch site workspace'} <ArrowRight size={16} /></Button>
           )}
         </footer>
+        {error && <div className="form-error" role="alert">{error}</div>}
       </section>
     </div>
   );
@@ -651,8 +653,9 @@ export default function App() {
   const [demo, setDemo] = useState(false);
   const [menu, setMenu] = useState(false);
   const [notice, setNotice] = useState('');
+  const [setupBusy, setSetupBusy] = useState(false);
   const [dialog, setDialog] = useState('');
-  const [alerts, setAlerts] = useState(() => SAMPLE_ALERTS);
+  const [alerts, setAlerts] = useState([]);
   const [alertFilter, setAlertFilter] = useState('ACTIVE');
   const [range, setRange] = useState('24 hours');
   const [sourceFilter, setSourceFilter] = useState('ALL');
@@ -663,7 +666,11 @@ export default function App() {
   const [searchState, setSearchState] = useState('');
   const [tick, setTick] = useState(0);
   const [overview, setOverview] = useState(null);
-  const [selectedZone, setSelectedZone] = useState(ZONES[0]);
+  const [siteZones, setSiteZones] = useState([]);
+  const [siteDevices, setSiteDevices] = useState([]);
+  const [siteConfigId, setSiteConfigId] = useState('');
+  const [workspaceError, setWorkspaceError] = useState('');
+  const [selectedZone, setSelectedZone] = useState(null);
   const [onboardStep, setOnboardStep] = useState(0);
   const [form, setForm] = useState({});
   const [mapStyle, setMapStyle] = useState('Satellite');
@@ -692,7 +699,16 @@ export default function App() {
         setUser(data);
         setSites(data.sites || []);
         if (data.sites?.[0]) setSite(data.sites[0]);
-        setRoute('app');
+        if (data.role === 'CUSTOMER_MANAGER' && !data.sites?.length) {
+          setForm(current => ({
+            company_name: data.company_name,
+            organization_id: data.organization_id,
+            ...current
+          }));
+          setRoute(current => current === 'setup' ? current : 'setup');
+        } else {
+          setRoute('app');
+        }
       })
       .catch(() => {
         sessionStorage.removeItem('aerova_token');
@@ -707,17 +723,77 @@ export default function App() {
     const params = new URLSearchParams({ range });
     if (sourceFilter && sourceFilter !== 'ALL') params.set('source', sourceFilter);
     if (zoneFilter) params.set('zone_id', zoneFilter);
+    if (deviceFilter !== 'ALL') params.set('device_uid', deviceFilter);
 
     fetch(`${API}/api/v1/sites/${site.id}/overview?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: ctrl.signal
     })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(setOverview)
-      .catch(() => setOverview(null));
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Unable to load site overview');
+        return data;
+      })
+      .then(data => {
+        setOverview(data);
+        setWorkspaceError('');
+      })
+      .catch(error => {
+        if (!ctrl.signal.aborted) {
+          setOverview(null);
+          setWorkspaceError(error.message || 'Unable to load site overview');
+        }
+      });
 
     return () => ctrl.abort();
-  }, [token, site?.id, route, range, sourceFilter, zoneFilter]);
+  }, [token, site?.id, route, range, sourceFilter, zoneFilter, deviceFilter]);
+
+  useEffect(() => {
+    if (!token || !site?.id || route !== 'app' || demo || user?.role === 'WATER_DRIVER') {
+      return;
+    }
+    const ctrl = new AbortController();
+    const headers = { Authorization: `Bearer ${token}` };
+    Promise.all([
+      fetch(`${API}/api/v1/sites/${site.id}/zones`, { headers, signal: ctrl.signal }),
+      fetch(`${API}/api/v1/sites/${site.id}/devices`, { headers, signal: ctrl.signal })
+    ])
+      .then(async ([zoneResponse, deviceResponse]) => {
+        const [zoneData, deviceData] = await Promise.all([zoneResponse.json(), deviceResponse.json()]);
+        if (!zoneResponse.ok) throw new Error(zoneData.detail || 'Unable to load site zones');
+        if (!deviceResponse.ok) throw new Error(deviceData.detail || 'Unable to load site devices');
+        setSiteZones(zoneData);
+        setSiteDevices(deviceData);
+        setSiteConfigId(site.id);
+        setWorkspaceError('');
+      })
+      .catch(error => {
+        if (!ctrl.signal.aborted) setWorkspaceError(error.message || 'Unable to load site configuration');
+      });
+    return () => ctrl.abort();
+  }, [token, site?.id, route, demo, user?.role]);
+
+  const activeSiteZones = siteConfigId === site?.id ? siteZones : EMPTY_LIST;
+  const activeSiteDevices = siteConfigId === site?.id ? siteDevices : EMPTY_LIST;
+  const currentOverview = overview?.site_id === site?.id ? overview : null;
+  const dashboardZones = useMemo(() => {
+    if (demo) return ZONES;
+    return activeSiteZones.filter(zone => zone.enabled).map(zone => {
+      const current = currentOverview?.zones?.find(item => item.id === zone.id);
+      return {
+        id: zone.id,
+        code: zone.code,
+        name: zone.name,
+        type: zone.zone_type,
+        risk: current?.risk?.level?.toLowerCase() || 'unknown',
+        pm10: current?.latest?.metrics?.pm10_ug_m3 ?? null,
+        pm25: current?.latest?.metrics?.pm25_ug_m3 ?? null,
+        lastUpdated: current?.latest?.received_at_utc ?? null,
+        devices: activeSiteDevices.filter(device => device.zone_id === zone.id).length
+      };
+    });
+  }, [demo, activeSiteZones, activeSiteDevices, currentOverview]);
+  const selectedDashboardZone = dashboardZones.find(zone => zone.id === selectedZone?.id) || dashboardZones[0] || null;
 
   useEffect(() => {
     if (!token || query.trim().length < 2) {
@@ -766,7 +842,7 @@ export default function App() {
         status: a.status,
         source: a.source_type || 'SYSTEM'
       }))))
-      .catch(() => setAlerts([]));
+      .catch(error => setWorkspaceError(error.message || 'Unable to load site alerts'));
   }, [token, site?.id, route, demo]);
 
   const go = next => {
@@ -778,6 +854,7 @@ export default function App() {
     sessionStorage.setItem('aerova_token', data.access_token);
     setToken(data.access_token);
     setUser(data.user);
+    setAlerts([]);
     setSites(data.sites || []);
     if (data.sites?.[0]) setSite(data.sites[0]);
     if (data.next_step === 'site_setup') {
@@ -792,14 +869,138 @@ export default function App() {
     sessionStorage.removeItem('aerova_token');
     setToken('');
     setUser(null);
+    setAlerts([]);
     setSite(null);
     setOverview(null);
+    setSiteZones([]);
+    setSiteDevices([]);
+    setSiteConfigId('');
+    setSelectedZone(null);
     setDemo(false);
     setCustomerProject(false);
     go('public');
   }
 
-  async function generateReport(includeSimulation) {
+  function selectSite(nextSite) {
+    setSite(nextSite);
+    setZoneFilter('');
+    setDeviceFilter('ALL');
+    setSelectedZone(null);
+    setWorkspaceError('');
+    setOverview(null);
+  }
+
+  async function saveSiteSetup() {
+    if (!token || !user?.organization_id) {
+      setWorkspaceError('Sign in as a Customer Manager to create a project.');
+      return;
+    }
+
+    setSetupBusy(true);
+    setWorkspaceError('');
+    const request = async (path, method, body) => {
+      const response = await fetch(`${API}/api/v1${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || 'Unable to save site setup');
+      return result;
+    };
+
+    try {
+      await request(`/organizations/${user.organization_id}`, 'PATCH', {
+        name: form.company_name,
+        industry: form.industry,
+        organization_type: form.organization_type,
+        operating_location: form.operating_location
+      });
+
+      let createdSite;
+      if (form.created_site_id) {
+        createdSite = await request(`/sites/${form.created_site_id}`, 'GET');
+      } else {
+        const existingSites = await request('/sites', 'GET');
+        createdSite = existingSites.find(item => item.organization_id === user.organization_id && item.code === form.code);
+        if (!createdSite) {
+          createdSite = await request('/sites', 'POST', {
+            organization_id: user.organization_id,
+            name: form.name,
+            code: form.code,
+            address: form.address || null,
+            project_type: form.project_type || null,
+            area: form.area ? Number(form.area) : null,
+            start_date: form.start_date || null,
+            completion_date: form.completion_date || null,
+            latitude: form.latitude ? Number(form.latitude) : null,
+            longitude: form.longitude ? Number(form.longitude) : null
+          });
+        }
+        setForm(current => ({ ...current, created_site_id: createdSite.id }));
+      }
+
+      const thresholds = {
+        pm25_warning: Number(form.pm25_warning ?? 35),
+        pm25_critical: Number(form.pm25_critical ?? 55),
+        pm10_warning: Number(form.pm10_warning ?? 100),
+        pm10_critical: Number(form.pm10_critical ?? 150),
+        source: 'CUSTOMER_CONFIGURED'
+      };
+      await request(`/sites/${createdSite.id}`, 'PATCH', { thresholds });
+      await request(`/sites/${createdSite.id}/map`, 'PUT', { basemap: form.basemap || 'satellite' });
+
+      const configuredZones = await request(`/sites/${createdSite.id}/zones`, 'GET');
+      for (let index = 0; index < configuredZones.length; index++) {
+        const activity = form[`activity_${index}`];
+        if (activity) {
+          await request(`/zones/${configuredZones[index].id}`, 'PATCH', {
+            configuration: { ...(configuredZones[index].configuration || {}), activity }
+          });
+        }
+      }
+
+      if (form.file && !form.site_plan_uploaded) {
+        const upload = new FormData();
+        upload.append('file', form.file);
+        const response = await fetch(`${API}/api/v1/sites/${createdSite.id}/assets?asset_type=SITE_PLAN`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: upload
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'Unable to upload the site plan');
+        setForm(current => ({ ...current, site_plan_uploaded: true }));
+      }
+
+      let inviteMessage = '';
+      if (form.team_email && !form.team_invited) {
+        const invite = await request('/invitations', 'POST', {
+          email: form.team_email,
+          role: form.team_role || 'SITE_MANAGER',
+          site_id: createdSite.id
+        });
+        inviteMessage = invite.development_token
+          ? ` Invitation link: ${window.location.origin}/?invite=${encodeURIComponent(invite.development_token)}`
+          : ' Invitation email delivery is not configured.';
+        setForm(current => ({ ...current, team_invited: true }));
+      }
+
+      const updatedUser = { ...user, company_name: form.company_name || user.company_name };
+      setUser(updatedUser);
+      setSites(current => [createdSite, ...current.filter(item => item.id !== createdSite.id)]);
+      selectSite(createdSite);
+      setCustomerProject(false);
+      setNotice(`Project setup saved.${inviteMessage}`);
+      go('app');
+    } catch (error) {
+      setWorkspaceError(error.message || 'Unable to save site setup');
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
+  async function generateReport(options = {}) {
     if (demo) {
       setNotice('Demo export is illustrative. Connect persisted data to generate a production report.');
       return;
@@ -812,7 +1013,11 @@ export default function App() {
       const response = await fetch(`${API}/api/v1/sites/${site.id}/reports`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report_type: 'DAILY', include_simulation: includeSimulation })
+        body: JSON.stringify({
+          report_type: options.reportType || 'DAILY',
+          range: options.range || '24 hours',
+          source: options.source || 'PHYSICAL'
+        })
       });
       if (!response.ok) {
         const error = await response.json();
@@ -848,11 +1053,30 @@ export default function App() {
     setNotice(`Alert ${action === 'resolve' ? 'resolved' : 'acknowledged'}`);
   }
 
+  async function saveDevice(deviceId, changes) {
+    try {
+      const response = await fetch(`${API}/api/v1/devices/${deviceId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || 'Unable to save device changes');
+      setSiteDevices(current => current.map(device => device.id === deviceId ? { ...device, ...result } : device));
+      setWorkspaceError('');
+      setNotice('Device details saved.');
+      return true;
+    } catch (error) {
+      setWorkspaceError(error.message || 'Unable to save device changes');
+      return false;
+    }
+  }
+
   if (route === 'loading') return <div className="invite-activation"><b>Loading your AEROVA workspace…</b></div>;
-  if (route === 'public') return <PublicSite go={x => { if (x === 'demo') { setDemo(true); go('app'); } else go(x); }} />;
+  if (route === 'public') return <PublicSite go={x => { if (x === 'demo') { setDemo(true); setAlerts(SAMPLE_ALERTS); go('app'); } else go(x); }} />;
   if (route === 'login' || route === 'signup') return <AuthPage mode={route} go={go} onAuth={authDone} />;
   if (route === 'accept_invite') return <InvitationActivation onAuth={authDone} />;
-  if (route === 'setup') return <SetupPage step={onboardStep} setStep={setOnboardStep} data={form} setData={setForm} save={() => go('app')} skip={() => go('app')} />;
+  if (route === 'setup') return <SetupPage step={onboardStep} setStep={setOnboardStep} data={form} setData={setForm} saving={setupBusy} error={workspaceError} save={saveSiteSetup} skip={() => go('app')} />;
 
   if (route === 'app' && user?.role === 'AEROVA_ADMIN') return <AdminConsole token={token} user={user} onLogout={logout} />;
   if (route === 'app' && user?.role === 'WATER_DRIVER') return <DriverApp token={token} user={user} onLogout={logout} />;
@@ -864,7 +1088,7 @@ export default function App() {
         sites={sites}
         onLogout={logout}
         onOpenSite={(s, tab) => {
-          setSite(s);
+          selectSite(s);
           setActive(tab && SITE_MANAGER_NAV.some(x => x[0] === tab) ? tab : 'overview');
           setCustomerProject(true);
         }}
@@ -969,7 +1193,7 @@ export default function App() {
                       key={`${h.type}-${h.id}`}
                       onClick={() => {
                         const next = sites.find(s => s.id === h.site_id);
-                        if (next) setSite(next);
+                        if (next) selectSite(next);
                         if (h.target === 'alerts') setAlertsOpen(true);
                         else if (SITE_MANAGER_NAV.some(x => x[0] === h.target)) setActive(h.target);
                         setQuery('');
@@ -1025,7 +1249,7 @@ export default function App() {
             <Sparkles size={16} />
             <b>ILLUSTRATIVE SIMULATION MODE</b>
             <span>Example values for evaluation · Persisted live sensors separated</span>
-            <button onClick={() => { setDemo(false); setCustomerProject(false); go('public'); }}>
+            <button onClick={() => { setDemo(false); setAlerts([]); setCustomerProject(false); go('public'); }}>
               Exit demo <X size={14} />
             </button>
           </div>
@@ -1037,6 +1261,7 @@ export default function App() {
             <button onClick={() => setNotice('')}><X size={14} /></button>
           </div>
         )}
+        {workspaceError && <div className="toast" role="alert">{workspaceError}</div>}
 
         {alertsOpen && (
           <div className="dialog-overlay" onClick={() => setAlertsOpen(false)}>
@@ -1097,7 +1322,7 @@ export default function App() {
             </div>
             {active === 'overview' && (
               <div className="title-actions">
-                <Button onClick={() => generateReport(false)}><Download size={15} /> Export report</Button>
+                <Button onClick={() => generateReport()}><Download size={15} /> Export report</Button>
                 <Button variant="primary" onClick={() => setDialog('intervention')}><Plus size={16} /> New intervention</Button>
               </div>
             )}
@@ -1105,7 +1330,7 @@ export default function App() {
 
           {active === 'overview' && (
             <Overview
-              live={overview}
+              live={currentOverview}
               demo={demo}
               tick={tick}
               range={range}
@@ -1116,7 +1341,8 @@ export default function App() {
               setZoneFilter={setZoneFilter}
               deviceFilter={deviceFilter}
               setDeviceFilter={setDeviceFilter}
-              zones={ZONES}
+              zones={dashboardZones}
+              devices={activeSiteDevices}
               alerts={alerts}
               setActive={setActive}
               setSelected={setSelectedZone}
@@ -1127,22 +1353,29 @@ export default function App() {
           {active === 'map' && (
             <MapPage
               demo={demo}
-              selected={selectedZone}
+              selected={selectedDashboardZone}
               setSelected={setSelectedZone}
               style={mapStyle}
               setStyle={setMapStyle}
               layers={layers}
               setLayers={setLayers}
-              zones={ZONES}
+              zones={dashboardZones}
               site={site}
+              source={currentOverview?.source || 'NO DATA'}
             />
           )}
 
           {active === 'monitoring' && (
             <Monitoring
               demo={demo}
+              token={token}
+              site={site}
               range={range}
               setRange={setRange}
+              sourceFilter={sourceFilter}
+              zoneFilter={zoneFilter}
+              deviceFilter={deviceFilter}
+              zones={dashboardZones}
               onIntervention={() => setDialog('intervention')}
             />
           )}
@@ -1173,9 +1406,11 @@ export default function App() {
           {active === 'management' && (
             <Management
               site={site}
-              zones={ZONES}
+              zones={dashboardZones}
+              devices={activeSiteDevices}
               demo={demo}
               token={token}
+              saveDevice={saveDevice}
               add={() => setOnboardStep(1)}
             />
           )}
@@ -1193,7 +1428,9 @@ export default function App() {
           close={() => setDialog('')}
           demo={demo}
           site={site}
-          zones={ZONES}
+          sites={sites}
+          onSelectSite={selectSite}
+          zones={dashboardZones}
           token={token}
           user={user}
           notify={setNotice}
@@ -1205,8 +1442,13 @@ export default function App() {
 
 function Overview({
   live, demo, tick, range, setRange, sourceFilter, setSourceFilter,
-  zoneFilter, setZoneFilter, deviceFilter, setDeviceFilter, zones, alerts, setActive, setSelected, intervention
+  zoneFilter, setZoneFilter, deviceFilter, setDeviceFilter, zones, devices, alerts, setActive, setSelected, intervention
 }) {
+  const availableDevices = demo ? [
+    { device_uid: 'PMS5003-01', name: 'PMS5003 · Excavation' },
+    { device_uid: 'PMS5003-02', name: 'PMS5003 · Haul road' },
+    { device_uid: 'DHT22-01', name: 'DHT22 · Weather' }
+  ] : devices;
   const filteredZones = useMemo(() => {
     if (!zoneFilter) return zones;
     return zones.filter(z => z.id === zoneFilter);
@@ -1249,8 +1491,8 @@ function Overview({
 
           <label>Zone:
             <select value={zoneFilter} onChange={e => setZoneFilter(e.target.value)}>
-              <option value="">All 5 zones</option>
-              {zones.map(z => <option key={z.id} value={z.id}>{z.id} · {z.name}</option>)}
+              <option value="">All zones</option>
+              {zones.map(z => <option key={z.id} value={z.id}>{z.code || z.id} · {z.name}</option>)}
             </select>
           </label>
 
@@ -1265,9 +1507,9 @@ function Overview({
           <label>Device:
             <select value={deviceFilter} onChange={e => setDeviceFilter(e.target.value)}>
               <option value="ALL">All devices</option>
-              <option value="PMS5003-01">PMS5003 · Excavation</option>
-              <option value="PMS5003-02">PMS5003 · Haul road</option>
-              <option value="DHT22-01">DHT22 · Weather</option>
+              {availableDevices.map(device => (
+                <option key={device.device_uid} value={device.device_uid}>{device.name}</option>
+              ))}
             </select>
           </label>
         </div>
@@ -1354,6 +1596,7 @@ function Overview({
                 <Risk value={demo ? z.risk : 'unknown'} />
               </button>
             ))}
+            {!filteredZones.length && <p className="role-muted">No zones configured for this site.</p>}
           </div>
           <button className="panel-link" onClick={() => setActive('map')}>
             Open live site map <ArrowRight size={15} />
@@ -1409,7 +1652,8 @@ function Overview({
   );
 }
 
-function MapPage({ demo, selected, setSelected, style, setStyle, layers, setLayers, zones, site }) {
+function MapPage({ demo, selected, setSelected, style, setStyle, layers, setLayers, zones, site, source }) {
+  const activeZone = selected || (demo ? ZONES[0] : null);
   return (
     <div className="map-layout">
       <aside className="map-side">
@@ -1418,18 +1662,19 @@ function MapPage({ demo, selected, setSelected, style, setStyle, layers, setLaye
         </div>
         {zones.map(z => (
           <button
-            className={`map-zone ${selected.id === z.id ? 'chosen' : ''}`}
+            className={`map-zone ${activeZone?.id === z.id ? 'chosen' : ''}`}
             key={z.id}
             onClick={() => setSelected(z)}
           >
             <i className={`zone-dot dot-${demo ? z.risk : 'unknown'}`} />
             <span>
-              <b>{z.id} · {z.name}</b>
+              <b>{z.code || z.id} · {z.name}</b>
               <small>{z.type}</small>
             </span>
             <ChevronRight size={15} />
           </button>
         ))}
+        {!zones.length && <p className="role-muted">No zones configured for this site.</p>}
 
         <div className="map-layers">
           <b>Visible layers</b>
@@ -1461,7 +1706,7 @@ function MapPage({ demo, selected, setSelected, style, setStyle, layers, setLaye
             <button className={style === 'Street' ? 'selected' : ''} onClick={() => setStyle('Street')}>Street</button>
           </div>
           <span><MapPin size={15} /> {demo ? 'Illustrative site · Pune, Maharashtra' : site?.address || 'Site coordinates not configured'}</span>
-          <Tag type={demo ? 'SIMULATION' : 'NO DATA'} />
+          <Tag type={demo ? 'SIMULATION' : source} />
         </div>
 
         <SiteIllustration
@@ -1470,22 +1715,22 @@ function MapPage({ demo, selected, setSelected, style, setStyle, layers, setLaye
           coordinates={site ? { latitude: site.latitude, longitude: site.longitude } : null}
         />
 
-        <div className="zone-drawer">
+        {activeZone ? <div className="zone-drawer">
           <div className="zone-drawer-title">
-            <span className={`zone-dot dot-${demo ? selected.risk : 'unknown'}`} />
+            <span className={`zone-dot dot-${demo ? activeZone.risk : 'unknown'}`} />
             <span>
-              <small>{selected.id} · {selected.type}</small>
-              <b>{selected.name}</b>
+              <small>{activeZone.code || activeZone.id} · {activeZone.type}</small>
+              <b>{activeZone.name}</b>
             </span>
-            <Risk value={demo ? selected.risk : 'unknown'} />
+            <Risk value={activeZone.risk} />
           </div>
-          <p>{demo ? 'Illustrative site activity · readings are not field measurements.' : 'No recent readings assigned to this zone.'}</p>
+          <p>{demo ? 'Illustrative site activity · readings are not field measurements.' : activeZone.lastUpdated ? `Last reading: ${new Date(activeZone.lastUpdated).toLocaleString()}` : 'No recent readings assigned to this zone.'}</p>
           <div className="zone-readings">
             {[
-              ['PM10 concentration', demo ? `${selected.pm10} µg/m³` : 'No data'],
-              ['PM2.5 concentration', demo ? '29 µg/m³' : 'No data'],
-              ['Assigned devices', `${selected.devices} devices`],
-              ['Freshness', demo ? 'Just now' : 'Awaiting reading']
+              ['PM10 concentration', demo ? `${activeZone.pm10} µg/m³` : activeZone.pm10 == null ? 'No data' : `${activeZone.pm10} µg/m³`],
+              ['PM2.5 concentration', demo ? '29 µg/m³' : activeZone.pm25 == null ? 'No data' : `${activeZone.pm25} µg/m³`],
+              ['Assigned devices', `${activeZone.devices} devices`],
+              ['Freshness', demo ? 'Just now' : activeZone.lastUpdated ? new Date(activeZone.lastUpdated).toLocaleString() : 'No fresh reading']
             ].map(([a, b]) => (
               <div key={a}>
                 <small>{a}</small>
@@ -1493,35 +1738,121 @@ function MapPage({ demo, selected, setSelected, style, setStyle, layers, setLaye
               </div>
             ))}
           </div>
-        </div>
+        </div> : <div className="zone-drawer"><p>Select a configured zone to view its data.</p></div>}
       </section>
     </div>
   );
 }
 
-function Monitoring({ demo, range, setRange, onIntervention }) {
+function Monitoring({ demo, token, site, range, setRange, sourceFilter, zoneFilter, deviceFilter, zones, onIntervention }) {
   const [subtab, setSubtab] = useState('readings');
+  const [telemetry, setTelemetry] = useState([]);
+  const [devices, setDevices] = useState([]);
+  const [riskData, setRiskData] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const [loadedKey, setLoadedKey] = useState('');
+  const requestKey = [site?.id, range, sourceFilter, zoneFilter, deviceFilter].join('|');
+  const activeTelemetry = loadedKey === requestKey ? telemetry : [];
+  const activeDevices = loadedKey === requestKey ? devices : [];
+  const activeRiskData = loadedKey === requestKey ? riskData : null;
 
-  const SRS_SENSORS = [
-    { name: 'PM10 Particulate', value: demo ? '86' : null, unit: 'µg/m³', hardware: 'PMS5003', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'PM2.5 Particulate', value: demo ? '29' : null, unit: 'µg/m³', hardware: 'PMS5003', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Ambient Temperature', value: demo ? '28.4' : null, unit: '°C', hardware: 'DHT22', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Relative Humidity', value: demo ? '61' : null, unit: '%', hardware: 'DHT22', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Wind Speed', value: demo ? '12' : null, unit: 'km/h', hardware: 'Anemometer', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Wind Direction', value: demo ? 'SW (225°)' : null, unit: '', hardware: 'Vane', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Surface Soil Moisture', value: demo ? '31' : null, unit: '%', hardware: 'Resistive probe', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Water Tank Level', value: demo ? '42' : null, unit: '%', hardware: 'Ultrasonic sensor', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Water Flow Rate', value: demo ? '0.0' : null, unit: 'L/min', hardware: 'Pulse flow meter', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Worker Presence', value: demo ? 'Active (1)' : null, unit: '', hardware: 'Presence counter', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Vehicle Movement', value: demo ? 'Elevated (Z2)' : null, unit: '', hardware: 'Speed detector', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Equipment Status', value: demo ? 'Sprinkler idle' : null, unit: '', hardware: 'Relay link', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Precipitation (Rain)', value: demo ? '0.0' : null, unit: 'mm/h', hardware: 'Rain gauge', source: demo ? 'SIMULATION' : 'UNCONFIGURED' },
-    { name: 'Ground Vibration', value: null, unit: 'mm/s', hardware: 'Seismic sensor', source: 'NOT CONFIGURED' },
-    { name: 'Gas / VOC', value: null, unit: 'ppm', hardware: 'VOC sensor', source: 'NOT CONFIGURED' }
+  useEffect(() => {
+    if (demo || !token || !site?.id) return;
+
+    const ctrl = new AbortController();
+    const params = new URLSearchParams({ limit: '1000', range });
+    if (sourceFilter !== 'ALL') params.set('source_type', sourceFilter);
+    if (zoneFilter) params.set('zone_id', zoneFilter);
+    if (deviceFilter !== 'ALL') params.set('device_uid', deviceFilter);
+    const headers = { Authorization: `Bearer ${token}` };
+    const read = async path => {
+      const response = await fetch(`${API}/api/v1${path}`, { headers, signal: ctrl.signal });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || 'Unable to load monitoring data');
+      return body;
+    };
+
+    Promise.all([
+      read(`/sites/${site.id}/telemetry?${params}`),
+      read(`/sites/${site.id}/devices`),
+      read(`/sites/${site.id}/risk`)
+    ])
+      .then(([history, deviceRows, risks]) => {
+        setTelemetry(history.items || []);
+        setDevices(deviceRows);
+        setRiskData(risks);
+        setLoadedKey(requestKey);
+        setLoadError('');
+      })
+      .catch(error => {
+        if (!ctrl.signal.aborted) setLoadError(error.message || 'Unable to load monitoring data');
+      });
+    return () => ctrl.abort();
+  }, [demo, token, site?.id, range, sourceFilter, zoneFilter, deviceFilter, requestKey]);
+
+  const sensorDefinitions = [
+    { name: 'PM10', keys: ['pm10_ug_m3'], unit: 'µg/m³', category: 'Air quality' },
+    { name: 'PM2.5', keys: ['pm25_ug_m3'], unit: 'µg/m³', category: 'Air quality' },
+    { name: 'Temperature', keys: ['temperature_c'], unit: '°C', category: 'Environment' },
+    { name: 'Humidity', keys: ['humidity_pct'], unit: '%', category: 'Environment' },
+    { name: 'Wind speed', keys: ['wind_speed_kmh'], unit: 'km/h', category: 'Weather' },
+    { name: 'Wind direction', keys: ['wind_direction_sector', 'wind_direction_deg'], unit: '', category: 'Weather' },
+    { name: 'Soil moisture', keys: ['soil_moisture_pct'], unit: '%', category: 'Soil' },
+    { name: 'Activity', keys: ['activity_type'], unit: '', category: 'Operations' },
+    { name: 'Worker presence', keys: ['worker_presence', 'worker_count', 'worker_present'], unit: '', category: 'Workforce' },
+    { name: 'Tank level', keys: ['tank_level_pct'], unit: '%', category: 'Water' },
+    { name: 'Water flow', keys: ['water_flow_lpm'], unit: 'L/min', category: 'Water' },
+    { name: 'Vehicle movement', keys: ['vehicle_count', 'vehicle_detected', 'vehicle_movement'], unit: '', category: 'Vehicle' },
+    { name: 'Equipment state', keys: ['equipment_state'], unit: '', category: 'Equipment' },
+    { name: 'Rain detection', keys: ['rain_mm_h', 'rain_detected'], unit: '', category: 'Weather' },
+    { name: 'Vibration', keys: ['vibration_g', 'vibration_mm_s', 'vibration_level'], units: { vibration_g: 'g', vibration_mm_s: 'mm/s' }, unit: '', category: 'Equipment' },
+    { name: 'Gas', keys: ['gas_raw_pct', 'gas_ppm'], units: { gas_raw_pct: '%', gas_ppm: 'ppm' }, unit: '', category: 'Gas' }
   ];
+
+  const demoValues = {
+    PM10: '86',
+    'PM2.5': '29',
+    Temperature: '28.4',
+    Humidity: '61',
+    'Wind speed': '12',
+    'Wind direction': '225',
+    'Soil moisture': '31',
+    Activity: 'Vehicle movement',
+    'Worker presence': 'Active',
+    'Tank level': '42',
+    'Water flow': '0.0',
+    'Vehicle movement': 'Elevated',
+    'Equipment state': 'Sprinkler idle',
+    'Rain detection': 'No rain'
+  };
+  const sensorRows = sensorDefinitions.map(sensor => {
+    if (demo) {
+      const value = demoValues[sensor.name];
+      return { ...sensor, value: value ?? null, source: value === undefined ? 'NO DATA' : 'SIMULATION', updated: value === undefined ? null : 'Illustrative' };
+    }
+    for (let i = activeTelemetry.length - 1; i >= 0; i--) {
+      const event = activeTelemetry[i];
+      const metricKey = sensor.keys.find(key => event.metrics?.[key] != null || event.states?.[key] != null);
+      const value = metricKey ? event.metrics?.[metricKey] ?? event.states?.[metricKey] : null;
+      if (metricKey) {
+        const displayValue = typeof value === 'boolean' ? (value ? 'Detected' : 'Not detected') : String(value);
+        return { ...sensor, value: displayValue, unit: sensor.units?.[metricKey] ?? sensor.unit, source: event.source_type || 'NO DATA', updated: event.received_at_utc };
+      }
+    }
+    return { ...sensor, value: null, source: 'NO DATA', updated: null };
+  });
+
+  const trend = activeTelemetry
+    .filter(event => event.metrics?.pm10_ug_m3 != null || event.metrics?.pm25_ug_m3 != null)
+    .map(event => ({
+      time: new Date(event.received_at_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      pm10: event.metrics?.pm10_ug_m3 ?? null,
+      pm25: event.metrics?.pm25_ug_m3 ?? null
+    }));
 
   return (
     <>
+      {loadError && <div className="role-message" role="alert">{loadError}</div>}
       <div className="subtabs">
         <button className={subtab === 'readings' ? 'on' : ''} onClick={() => setSubtab('readings')}>Live readings</button>
         <button className={subtab === 'trends' ? 'on' : ''} onClick={() => setSubtab('trends')}>Historical trends</button>
@@ -1538,29 +1869,31 @@ function Monitoring({ demo, range, setRange, onIntervention }) {
       </div>
 
       {subtab === 'readings' && (
-        <div className="reading-grid">
-          {SRS_SENSORS.map(s => (
+        <>
+          <div className="reading-grid">
+          {sensorRows.map(s => (
             <article key={s.name} className="sensor-card">
               <small>{s.name}</small>
               <b>
-                {s.value !== null ? `${s.value} ` : 'No sensor configured'}
+                {s.value !== null ? `${s.value} ` : 'No fresh reading'}
                 {s.value !== null && <i>{s.unit}</i>}
               </b>
               <footer>
-                <span>{s.hardware}</span>
+                <span>{s.category}{s.updated ? ` · ${s.updated === 'Illustrative' ? 'Illustrative' : new Date(s.updated).toLocaleString()}` : ''}</span>
                 <Tag type={s.source} />
               </footer>
             </article>
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       {subtab === 'trends' && (
         <Panel title="Historical dust concentration" kicker="TREND ANALYSIS">
-          {demo ? (
+          {(demo ? SAMPLE_TREND : trend).length ? (
             <div className="chart big-chart">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={SAMPLE_TREND}>
+                <AreaChart data={demo ? SAMPLE_TREND : trend}>
                   <CartesianGrid vertical={false} stroke="#ece9e2" />
                   <XAxis dataKey="time" />
                   <YAxis />
@@ -1571,7 +1904,7 @@ function Monitoring({ demo, range, setRange, onIntervention }) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <Empty icon={Activity} title="Awaiting telemetry events" body="Stored readings will plot continuous trends over selected timeframe." />
+            <Empty icon={Activity} title="No readings in this range" body="Stored particulate readings will appear here when available." />
           )}
         </Panel>
       )}
@@ -1580,49 +1913,53 @@ function Monitoring({ demo, range, setRange, onIntervention }) {
         <div className="prediction-integrated-view">
           <div className="prediction-banner">
             <div>
-              <small>NEXT 30 MINUTES · EXPLAINABLE RISK MODEL</small>
-              <h2>{demo ? 'Moderate site dust risk' : 'Prediction unavailable'}</h2>
-              <p>{demo ? 'Potential dust rise near Z2 as vehicle movement continues under dry ground conditions.' : 'Fresh telemetry and configured zone context are required for prediction calculations.'}</p>
-              <Tag type={demo ? 'PREDICTED' : 'NO DATA'} />
+              <small>{demo ? 'ILLUSTRATIVE FORECAST' : 'CURRENT RULE-BASED RISK'}</small>
+              <h2>{demo ? 'Moderate site dust risk' : activeRiskData?.level ? `${activeRiskData.level} site risk` : 'Risk unavailable'}</h2>
+              <p>{demo ? 'Potential dust rise near Z2 as vehicle movement continues under dry ground conditions.' : 'Forecasting is unavailable; this assessment reflects configured rules and recent readings only.'}</p>
+              <Tag type={demo ? 'PREDICTED' : activeRiskData?.level ? 'DERIVED' : 'NO DATA'} />
             </div>
-            <strong>{demo ? '58' : '—'}<small>Risk score</small></strong>
+            <strong>{demo ? '58' : activeRiskData?.overall ?? '—'}<small>Risk score</small></strong>
           </div>
 
           <div className="split-panels">
-            <Panel title="Predicted risk by zone" kicker="30-MIN HORIZON">
-              {ZONES.map((z, i) => (
-                <div className="risk-meter-row" key={z.id}>
-                  <b>{z.id}</b>
-                  <span>{z.name}</span>
-                  <i><b style={{ width: demo ? `${[78, 61, 32, 24, 0][i]}%` : '0%' }} /></i>
-                  <Risk value={demo ? z.risk : 'unknown'} />
+            <Panel title={demo ? 'Predicted risk by zone' : 'Current risk by zone'} kicker={demo ? 'SIMULATION' : 'DERIVED FROM TELEMETRY'}>
+              {(demo ? ZONES : activeRiskData?.zones || []).map((z, i) => {
+                const level = z.level || z.risk?.level || z.risk || 'UNKNOWN';
+                const score = z.score ?? z.risk?.score;
+                return (
+                <div className="risk-meter-row" key={z.id || z.zone_id}>
+                  <b>{z.code || z.zone_code || z.id}</b>
+                  <span>{z.name || z.zone_name}</span>
+                  <i><b style={{ width: `${demo ? [78, 61, 32, 24, 0][i] : score ?? 0}%` }} /></i>
+                  <Risk value={level} />
                 </div>
-              ))}
+                );
+              })}
+              {!demo && !activeRiskData?.zones?.length && <p className="role-muted">No risk assessment is available for this site.</p>}
             </Panel>
 
             <Panel title="Risk explanation factors" kicker="TRANSPARENT REASONING">
               <div className="factor-list">
-                {[
+                {(demo ? [
                   ['Vehicle movement', 'Elevated in Zone Z2', Command],
                   ['Surface dryness', 'Contributing factor (31% moisture)', Wind],
                   ['Wind heading', 'SW (225°) toward boundary', Compass],
                   ['Rainfall factor', 'No rain detected in last 24h', Cloud]
-                ].map(([a, b, Icon]) => (
+                ] : (activeRiskData?.zones || []).flatMap(zone => (zone.reasons || []).map(reason => [zone.zone_name, reason, Activity]).slice(0, 4))
+                ).slice(0, 4).map(([a, b, Icon]) => (
                   <div key={a}>
                     <Icon size={16} />
                     <span>
                       <b>{a}</b>
-                      <small>{demo ? b : 'Awaiting data'}</small>
+                      <small>{b}</small>
                     </span>
                   </div>
                 ))}
               </div>
-              <Button variant="primary" onClick={onIntervention}>
-                Review recommended intervention <ArrowRight size={15} />
-              </Button>
+              {demo && <Button variant="primary" onClick={onIntervention}>Review recommended intervention <ArrowRight size={15} /></Button>}
             </Panel>
           </div>
-          <p className="plain-note"><Shield size={15} /> Predictions are rule-based decision support. Plumes represent dispersion models, not measured point concentrations.</p>
+          <p className="plain-note"><Shield size={15} /> Risk scores are derived assessments, not measured concentrations or proof of cause. Forecasts are not configured for live data.</p>
         </div>
       )}
 
@@ -1641,9 +1978,17 @@ function Monitoring({ demo, range, setRange, onIntervention }) {
                 <tr key={r[0]}>
                   <td><b>{r[0]}</b></td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td><td>{r[4]}</td><td><Tag type={r[5]} /></td>
                 </tr>
-              )) : (
-                <tr><td colSpan={6} className="role-empty">No provisioned sensors active.</td></tr>
-              )}
+              )) : activeDevices.map(device => (
+                <tr key={device.id}>
+                  <td><b>{device.device_uid}</b></td>
+                  <td>{device.device_type}</td>
+                  <td>{zones.find(zone => zone.id === device.zone_id)?.name || 'Unassigned'}</td>
+                  <td>{device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : 'No data'}</td>
+                  <td>Not recorded</td>
+                  <td><Tag type={device.source_type} /></td>
+                </tr>
+              ))}
+              {!demo && !activeDevices.length && <tr><td colSpan={6} className="role-empty">No devices registered for this site.</td></tr>}
             </tbody>
           </table>
         </Panel>
@@ -1652,10 +1997,10 @@ function Monitoring({ demo, range, setRange, onIntervention }) {
       {subtab === 'thresholds' && (
         <Panel title="Configured site thresholds" kicker="CUSTOMER CONFIGURATION">
           <div className="thresholds">
-            <span>PM2.5 warning: <b>35 µg/m³</b></span>
-            <span>PM2.5 critical: <b>55 µg/m³</b></span>
-            <span>PM10 warning: <b>100 µg/m³</b></span>
-            <span>PM10 critical: <b>150 µg/m³</b></span>
+            <span>PM2.5 warning: <b>{demo ? 35 : site?.thresholds?.pm25_warning ?? 'Not configured'} µg/m³</b></span>
+            <span>PM2.5 critical: <b>{demo ? 55 : site?.thresholds?.pm25_critical ?? 'Not configured'} µg/m³</b></span>
+            <span>PM10 warning: <b>{demo ? 100 : site?.thresholds?.pm10_warning ?? 'Not configured'} µg/m³</b></span>
+            <span>PM10 critical: <b>{demo ? 150 : site?.thresholds?.pm10_critical ?? 'Not configured'} µg/m³</b></span>
             <small>Customer thresholds for proactive response · not regulatory legal limits</small>
           </div>
         </Panel>
@@ -1778,7 +2123,7 @@ function Resources({ demo, token, site, user, vendor }) {
                 <Tag type={demo ? 'SIMULATION' : 'NO DATA'} />
               </div>
               <strong>{demo ? '0.0 L/min' : 'No data'}</strong>
-              <p>{demo ? 'Pulse flow meter · verified' : 'No flow registered'}</p>
+              <p>{demo ? 'Pulse flow meter · simulated, not verified' : 'No fresh flow reading'}</p>
             </article>
 
             <article className="panel">
@@ -1857,43 +2202,40 @@ function Resources({ demo, token, site, user, vendor }) {
 }
 
 function Reports({ generate }) {
-  const [include, setInclude] = useState(false);
+  const [reportType, setReportType] = useState('DAILY');
+  const [range, setRange] = useState('Today');
+  const [source, setSource] = useState('PHYSICAL');
 
   return (
     <>
       <Panel title="Generate operational compliance report" kicker="REPORT BUILDER">
         <div className="report-options">
           <label>Report type
-            <select>
-              <option>Daily site summary</option>
-              <option>Weekly operational report</option>
-              <option>Monthly compliance review</option>
-              <option>Intervention effectiveness</option>
+            <select value={reportType} onChange={e => setReportType(e.target.value)}>
+              <option value="DAILY">Daily site summary</option>
+              <option value="WEEKLY">Weekly operational report</option>
+              <option value="MONTHLY">Monthly site report</option>
             </select>
           </label>
           <label>Date range
-            <select>
-              <option>Today</option>
-              <option>Last 7 days</option>
-              <option>Last 30 days</option>
+            <select value={range} onChange={e => setRange(e.target.value)}>
+              <option value="Today">Today</option>
+              <option value="7 days">Last 7 days</option>
+              <option value="30 days">Last 30 days</option>
             </select>
           </label>
           <label>Source
-            <select>
-              <option>All sources</option>
-              <option>Physical only</option>
-              <option>Simulation only</option>
+            <select value={source} onChange={e => setSource(e.target.value)}>
+              <option value="ALL">All sources</option>
+              <option value="PHYSICAL">Physical only</option>
+              <option value="SIMULATION">Simulation only</option>
             </select>
           </label>
         </div>
 
-        <label className="consent">
-          <input type="checkbox" checked={include} onChange={e => setInclude(e.target.checked)} /> Include simulated measurements in CSV export
-        </label>
-
         <div className="report-foot">
           <span><Shield size={16} /> Reports support operational records and documentation.</span>
-          <Button variant="primary" onClick={() => generate(include)}>
+          <Button variant="primary" onClick={() => generate({ reportType, range, source })}>
             <Download size={16} /> Download CSV report
           </Button>
         </div>
@@ -1902,8 +2244,12 @@ function Reports({ generate }) {
   );
 }
 
-function Management({ site, zones, demo, _token, add }) {
+function Management({ site, zones, devices, demo, saveDevice, add }) {
   const [subtab, setSubtab] = useState('details');
+  const [deviceDrafts, setDeviceDrafts] = useState({});
+  const connectedCount = devices.filter(device => device.status === 'CONNECTED').length;
+  const staleCount = devices.filter(device => device.status === 'OFFLINE' && device.last_seen_at).length;
+  const offlineCount = devices.filter(device => device.status === 'NO DATA').length;
 
   return (
     <>
@@ -1964,28 +2310,57 @@ function Management({ site, zones, demo, _token, add }) {
       {subtab === 'devices' && (
         <Panel title="Device inventory & assignments" kicker="SENSOR HARDWARE">
           <div className="device-stats">
-            <span><b>{demo ? '2' : '0'}</b> Connected</span>
-            <span><b>0</b> Stale</span>
-            <span><b>{demo ? '1' : '0'}</b> Offline</span>
+            <span><b>{demo ? 2 : connectedCount}</b> Connected</span>
+            <span><b>{demo ? 0 : staleCount}</b> Stale</span>
+            <span><b>{demo ? 1 : offlineCount}</b> Offline / no data</span>
             <span>Site Manager can edit zone assignments and metadata. Security credential rotation remains restricted.</span>
           </div>
 
           <table className="role-table">
             <thead>
-              <tr><th>Device UID</th><th>Type</th><th>Source</th><th>Assigned Zone</th><th>Status</th><th>Last seen</th></tr>
+              <tr><th>Device UID</th><th>Name</th><th>Type</th><th>Source</th><th>Assigned Zone</th><th>Status</th><th>Last seen</th><th /></tr>
             </thead>
             <tbody>
               {demo ? [
-                ['SIM-WOKWI-01', 'ESP32 Main Node', 'SIMULATION', 'Z1', 'Connected', 'Just now'],
-                ['SIM-PMS-02', 'PMS5003 Dust', 'SIMULATION', 'Z2', 'Connected', 'Just now'],
-                ['PHYS-ESP32-01', 'Physical chamber', 'PHYSICAL', 'Unassigned', 'Offline', 'No data']
+                ['SIM-WOKWI-01', 'ESP32 Main Node', 'ESP32', 'SIMULATION', 'Z1', 'Connected', 'Just now'],
+                ['SIM-PMS-02', 'PMS5003 Dust', 'PMS5003', 'SIMULATION', 'Z2', 'Connected', 'Just now'],
+                ['PHYS-ESP32-01', 'Physical chamber', 'ESP32', 'PHYSICAL', 'Unassigned', 'Offline', 'No data']
               ].map(d => (
                 <tr key={d[0]}>
-                  <td><b>{d[0]}</b></td><td>{d[1]}</td><td><Tag type={d[2]} /></td><td>{d[3]}</td><td><Risk value={d[4]} /></td><td>{d[5]}</td>
+                  <td><b>{d[0]}</b></td><td>{d[1]}</td><td>{d[2]}</td><td><Tag type={d[3]} /></td><td>{d[4]}</td><td><Risk value={d[5]} /></td><td>{d[6]}</td><td>—</td>
                 </tr>
               )) : (
-                <tr><td colSpan={6} className="role-empty">No devices registered. Provision hardware via API.</td></tr>
+                devices.map(device => {
+                  const draft = deviceDrafts[device.id] || {};
+                  const changed = Object.keys(draft).length > 0;
+                  return (
+                    <tr key={device.id}>
+                      <td><b>{device.device_uid}</b></td>
+                      <td><input aria-label={`Device name for ${device.device_uid}`} value={draft.name ?? device.name} onChange={e => setDeviceDrafts(current => ({ ...current, [device.id]: { ...current[device.id], name: e.target.value } }))} /></td>
+                      <td><input aria-label={`Device type for ${device.device_uid}`} value={draft.device_type ?? device.device_type} onChange={e => setDeviceDrafts(current => ({ ...current, [device.id]: { ...current[device.id], device_type: e.target.value } }))} /></td>
+                      <td><Tag type={device.source_type} /></td>
+                      <td>
+                        <select
+                          aria-label={`Zone assignment for ${device.device_uid}`}
+                          value={draft.zone_id ?? device.zone_id ?? ''}
+                          onChange={e => setDeviceDrafts(current => ({ ...current, [device.id]: { ...current[device.id], zone_id: e.target.value || null } }))}
+                        >
+                          <option value="">Unassigned</option>
+                          {zones.map(zone => <option key={zone.id} value={zone.id}>{zone.code || zone.id} · {zone.name}</option>)}
+                        </select>
+                      </td>
+                      <td><Risk value={device.status} /></td>
+                      <td>{device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : 'No data'}</td>
+                      <td><button className="role-link" disabled={!changed} onClick={async () => {
+                        if (await saveDevice(device.id, draft)) {
+                          setDeviceDrafts(current => ({ ...current, [device.id]: {} }));
+                        }
+                      }}>Save</button></td>
+                    </tr>
+                  );
+                })
               )}
+              {!demo && !devices.length && <tr><td colSpan={8} className="role-empty">No devices registered for this site.</td></tr>}
             </tbody>
           </table>
         </Panel>
@@ -2001,7 +2376,7 @@ function Management({ site, zones, demo, _token, add }) {
   );
 }
 
-function Dialog({ type, close, demo, site, zones, token, user, notify }) {
+function Dialog({ type, close, demo, site, sites, zones, token, user, notify, onSelectSite }) {
   const titles = {
     intervention: 'Create intervention draft',
     device: 'Provision device',
@@ -2015,6 +2390,16 @@ function Dialog({ type, close, demo, site, zones, token, user, notify }) {
 
   async function submit(e) {
     e.preventDefault();
+    if (type === 'site') {
+      const selected = sites.find(item => item.id === new FormData(e.currentTarget).get('site_id'));
+      if (!selected) {
+        setError('Select an authorized site.');
+        return;
+      }
+      onSelectSite(selected);
+      close();
+      return;
+    }
     if (type === 'intervention') {
       if (demo) {
         setError('Illustrative demo mode. Connect an authorized site to persist interventions.');
@@ -2117,8 +2502,11 @@ function Dialog({ type, close, demo, site, zones, token, user, notify }) {
 
           {type === 'site' && (
             <div className="profile-details-view">
-              <p>Select from your authorized site assignments.</p>
-              <p>Current site: <b>{site?.name || 'Selected'}</b></p>
+              <label>Authorized site
+                <select name="site_id" defaultValue={site?.id || ''} required>
+                  {sites.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
             </div>
           )}
 

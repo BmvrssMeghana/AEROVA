@@ -672,15 +672,19 @@ export function CustomerConsole({ token, user, sites, onLogout, onOpenSite, onCr
     let stop = false;
     const params = new URLSearchParams({ range: dateRange });
     if (sourceFilter !== 'ALL') params.set('source', sourceFilter);
+    const telemetryParams = new URLSearchParams({ limit: '1000', range: dateRange });
+    if (sourceFilter !== 'ALL') telemetryParams.set('source_type', sourceFilter);
 
     Promise.all([
       request(`/sites/${projectId}/overview?${params}`, token),
       request(`/sites/${projectId}/risk`, token).catch(() => null),
-      request(`/sites/${projectId}/interventions`, token)
+      request(`/sites/${projectId}/interventions`, token),
+      request(`/sites/${projectId}/telemetry?${telemetryParams}`, token),
+      request(`/sites/${projectId}/devices`, token)
     ])
-      .then(([ov, risk, items]) => {
+      .then(([ov, risk, items, history, deviceRows]) => {
         if (!stop) {
-          setMonitor({ ...ov, risk });
+          setMonitor({ ...ov, risk, history: history.items || [], devices: deviceRows });
           setInterventions(items);
         }
       })
@@ -806,19 +810,17 @@ export function CustomerConsole({ token, user, sites, onLogout, onOpenSite, onCr
           </label>
         )}
 
-        {['overview', 'monitoring', 'interventions', 'resources', 'reports'].includes(active) && (
+        {active === 'monitoring' && (
           <div className="filter-controls-bar">
-            {['monitoring', 'interventions', 'resources', 'reports'].includes(active) && (
-              <select
-                className="role-select"
-                value={projectId}
-                onChange={e => setProjectId(e.target.value)}
-                aria-label="Select Project"
-              >
-                {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                {!sites.length && <option value="">No projects</option>}
-              </select>
-            )}
+            <select
+              className="role-select"
+              value={projectId}
+              onChange={e => setProjectId(e.target.value)}
+              aria-label="Select Project"
+            >
+              {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {!sites.length && <option value="">No projects</option>}
+            </select>
 
             <select
               className="role-select"
@@ -980,6 +982,49 @@ export function CustomerConsole({ token, user, sites, onLogout, onOpenSite, onCr
               )}
             </div>
           </div>
+
+          <div className="sub-section-block">
+            <h3>Recent readings</h3>
+            <Table
+              columns={['Time', 'Device', 'Zone', 'Measurements', 'Source', 'Quality']}
+              rows={(monitor?.history || []).slice(-20).reverse().map((event, index) => {
+                const values = Object.entries({ ...(event.metrics || {}), ...(event.states || {}) })
+                  .map(([key, value]) => `${key.replaceAll('_', ' ')}: ${String(value)}`)
+                  .join(' · ');
+                return {
+                  id: `${event.event_id || index}`,
+                  cells: [
+                    new Date(event.received_at_utc).toLocaleString(),
+                    event.device_uid || 'Device',
+                    event.zone_id || 'Site',
+                    values || 'No usable measurements',
+                    <Status key="source">{event.source_type}</Status>,
+                    <Status key="quality">{event.quality}</Status>
+                  ]
+                };
+              })}
+              empty="No telemetry events in this range."
+            />
+          </div>
+
+          <div className="sub-section-block">
+            <h3>Devices</h3>
+            <Table
+              columns={['Device', 'ID', 'Source', 'Zone', 'Status', 'Last seen']}
+              rows={(monitor?.devices || []).map(device => ({
+                id: device.id,
+                cells: [
+                  device.name,
+                  device.device_uid,
+                  <Status key="source">{device.source_type}</Status>,
+                  device.zone_id || 'Unassigned',
+                  <Status key="status">{device.status}</Status>,
+                  device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : 'No data'
+                ]
+              }))}
+              empty="No devices registered for this project."
+            />
+          </div>
         </section>
       )}
 
@@ -1015,7 +1060,7 @@ export function CustomerConsole({ token, user, sites, onLogout, onOpenSite, onCr
           <h2>Resources & equipment coordination</h2>
           <div className="role-stats">
             <Stat label="Water tank level" value="No data" icon={Droplets} foot="Awaiting level transmitter" />
-            <Stat label="Flow rate" value="0.0 L/min" icon={Waves} foot="Sensor-verified flow" />
+            <Stat label="Flow rate" value="No data" icon={Waves} foot="Awaiting a fresh flow reading" />
             <Stat label="Assigned Water Drivers" value={drivers.length} icon={Users} />
           </div>
 

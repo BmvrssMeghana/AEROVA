@@ -38,7 +38,13 @@ The first AEROVA Admin is provisioned out of band from the backend directory aft
 
 The script prompts for a password. Sign in through the website, add customer businesses in the Admin console, and send the returned activation link to the invited manager. Customer Managers can create projects and invite Site Managers or Water Drivers. Email delivery is not configured in this local build, so invitation links are displayed in the application and can be copied to the invitee. Docker Compose remains the PostgreSQL-backed option when Docker Desktop is installed and running.
 
+To preview all four roles locally, run `.\.venv\Scripts\python.exe scripts\create_demo_accounts.py` from `backend` and enter a shared demo password when prompted. This creates a separate demo organization, project, zones, and a sample Water Driver task offer. It is disabled when `AEROVA_ENV=production`; the script does not reset or replace existing accounts.
+
 Set `DATABASE_URL` to a PostgreSQL URL when using PostgreSQL; Docker Compose configures that automatically.
+
+For a local PostgreSQL server, set `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` in the root `.env` file. The backend reads that ignored file and uses `POSTGRES_HOST`/`POSTGRES_PORT` (defaulting to `localhost:5432`) when `DATABASE_URL` is not set. The API and Alembic use the same connection. Never put database credentials in frontend settings or committed files.
+
+The supplied synthetic SQL seed belongs in the isolated `aerova_demo` schema. The application migrations create the live application tables in `public`; identities in the SQL seed are not application login accounts, and the seed script should not be rerun against an already populated schema. In development, the API also permits CORS requests from localhost and 127.0.0.1 on any port; production should use explicit `CORS_ORIGINS` instead.
 
 Set `VITE_MAPBOX_TOKEN` to enable Mapbox GL for sites with configured coordinates. Without a token or georeference, the existing aerial reference image is shown as an explicitly illustrative, non-georeferenced view. Mapbox credentials are public browser credentials; restrict their scopes and allowed URLs in Mapbox.
 

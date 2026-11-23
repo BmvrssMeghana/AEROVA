@@ -2,7 +2,7 @@ import os
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from app.db import Base
+from app.db import Base, engine
 from app import models  # noqa: F401
 
 config = context.config
@@ -12,6 +12,8 @@ target_metadata = Base.metadata
 url = os.getenv("DATABASE_URL")
 if url:
     config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+else:
+    config.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False).replace("%", "%%"))
 
 def run_migrations_offline():
     context.configure(url=config.get_main_option("sqlalchemy.url"), target_metadata=target_metadata,
