@@ -339,7 +339,7 @@ export function AdminConsole({ token, user, onLogout }) {
       <b key="name">{r.name}</b>,
       r.contact_name || '—',
       r.contact_email || '—',
-      r.created_at?.slice(0, 10),
+      r.start_date || '—',
       r.active_projects,
       r.site_managers,
       r.water_drivers,
@@ -484,7 +484,7 @@ export function AdminConsole({ token, user, onLogout }) {
         <section className="role-panel">
           <h2>Cross-customer projects</h2>
           <Table
-            columns={['Project', 'Customer', 'Location', 'Assigned Site Manager', 'Status', 'Created', 'Administrative Access']}
+            columns={['Project', 'Customer', 'Location', 'Assigned Site Manager', 'Status', 'Start date', 'Administrative Access']}
             rows={projectRows}
             empty="No projects found across organizations."
           />
@@ -570,15 +570,15 @@ export function AdminConsole({ token, user, onLogout }) {
             </div>
             <div className="modal-content-grid">
               <div><small>Project Name</small><b>{readOnlyProject.name}</b></div>
-              <div><small>Project Code</small><b>{readOnlyProject.code || '—'}</b></div>
+              <div><small>Project Code</small><b>{readOnlyProject.project_code || '—'}</b></div>
               <div><small>Customer</small><b>{readOnlyProject.customer}</b></div>
               <div><small>Assigned Site Manager</small><b>{readOnlyProject.site_manager}</b></div>
               <div><small>Location / Address</small><b>{readOnlyProject.address || '—'}</b></div>
               <div><small>Coordinates</small><b>{readOnlyProject.latitude && readOnlyProject.longitude ? `${readOnlyProject.latitude}, ${readOnlyProject.longitude}` : 'Not configured'}</b></div>
-              <div><small>Site Area</small><b>{readOnlyProject.area ? `${readOnlyProject.area} m²` : '—'}</b></div>
+              <div><small>Site Area</small><b>{readOnlyProject.area_acres != null ? `${readOnlyProject.area_acres} acres` : '—'}</b></div>
               <div><small>Status</small><b><Status>{readOnlyProject.status}</Status></b></div>
               <div><small>Start Date</small><b>{readOnlyProject.start_date || '—'}</b></div>
-              <div><small>Completion Date</small><b>{readOnlyProject.completion_date || '—'}</b></div>
+              <div><small>Expected End Date</small><b>{readOnlyProject.expected_end_date || '—'}</b></div>
             </div>
             <p className="role-muted">Operational controls, actuator triggering and water spraying commands are strictly disabled in platform admin mode.</p>
             <footer>
@@ -597,13 +597,13 @@ export function AdminConsole({ token, user, onLogout }) {
               <h2>Add customer business</h2>
               <button type="button" onClick={() => setShowAddCustomer(false)}>×</button>
             </header>
-            <label>Company name<input name="name" required minLength="2" placeholder="Acme Construction Ltd" /></label>
-            <label>Contact person name<input name="contact_name" required placeholder="Jane Doe" /></label>
-            <label>Contact email<input name="contact_email" type="email" required placeholder="jane@acme.com" /></label>
-            <label>Mobile number<input name="contact_phone" type="tel" placeholder="+91 9876543210" /></label>
-            <label>Industry<input name="industry" placeholder="Infrastructure, Commercial..." /></label>
-            <label>Operating location<input name="location" placeholder="Pune, Maharashtra" /></label>
-            <label>Reason for account creation<input name="reason" required minLength="3" placeholder="Contract execution..." /></label>
+            <label>Company name<input name="name" required minLength="2" /></label>
+            <label>Contact person name<input name="contact_name" required /></label>
+            <label>Contact email<input name="contact_email" type="email" required /></label>
+            <label>Mobile number<input name="contact_phone" type="tel" /></label>
+            <label>Industry<input name="industry" /></label>
+            <label>Operating location<input name="location" /></label>
+            <label>Reason for account creation<input name="reason" required minLength="3" /></label>
             <footer>
               <button type="button" className="role-secondary" onClick={() => setShowAddCustomer(false)}>
                 Cancel
@@ -755,7 +755,7 @@ export function CustomerConsole({ token, user, sites, onLogout, onOpenSite, onCr
     id: s.id,
     cells: [
       <b key="name">{s.name}</b>,
-      s.code || '—',
+      s.project_code || '—',
       s.address || 'Location not set',
       <Status key="status">{s.status}</Status>,
       <button key="open" className="role-link" onClick={() => onOpenSite(s)}>
@@ -1238,7 +1238,7 @@ export function DriverApp({ token, user, onLogout }) {
                   <Droplets size={16} /> WATER NEEDED
                 </div>
                 <h2>{offer.task.site_name}</h2>
-                <p><MapPin size={16} /> {offer.task.destination || 'Site destination'}</p>
+                <p><MapPin size={16} /> {offer.task.destination_lat != null && offer.task.destination_lon != null ? `${offer.task.destination_lat}, ${offer.task.destination_lon}` : offer.task.site_name}</p>
                 {offer.task.zone_name && (
                   <span className="driver-zone-chip">Target zone: {offer.task.zone_name}</span>
                 )}
@@ -1270,10 +1270,10 @@ export function DriverApp({ token, user, onLogout }) {
                   <ClipboardList size={16} /> TASK: {current.status.replaceAll('_', ' ')}
                 </div>
                 <h2>{current.zone_name || current.title}</h2>
-                <p className="driver-dest"><MapPin size={16} /> {current.site_name} · {current.destination}</p>
+                <p className="driver-dest"><MapPin size={16} /> {current.site_name}{current.destination_lat != null && current.destination_lon != null ? ` · ${current.destination_lat}, ${current.destination_lon}` : ''}</p>
                 <div className="driver-instructions-box">
                   <b>Instructions:</b>
-                  <p>{current.instructions}</p>
+                  <p>{current.instruction}</p>
                 </div>
 
                 {current.requested_litres && (
@@ -1368,7 +1368,6 @@ export function DriverApp({ token, user, onLogout }) {
                 id="driver-litres-input"
                 type="number"
                 min="0"
-                placeholder="e.g. 5000 litres"
                 className="driver-large-input"
               />
               <div className="driver-modal-actions">
@@ -1482,9 +1481,9 @@ export function InvitationActivation({ onAuth }) {
         <a className="role-brand" href="/"><span>A</span>AEROVA</a>
         <h1>Activate your account</h1>
         <p>Set up your AEROVA access from the invitation link.</p>
-        <label>Full name<input name="name" autoComplete="name" required minLength="2" placeholder="Jane Smith" /></label>
-        <label>Mobile number<input name="phone" type="tel" autoComplete="tel" placeholder="+91 9876543210" /></label>
-        <label>Create password<input name="password" type="password" autoComplete="new-password" required minLength="12" placeholder="At least 12 characters" /></label>
+        <label>Full name<input name="name" autoComplete="name" required minLength="2" /></label>
+        <label>Mobile number<input name="phone" type="tel" autoComplete="tel" /></label>
+        <label>Create password<input name="password" type="password" autoComplete="new-password" required minLength="12" /></label>
         {error && <div className="role-message"><AlertCircle size={16} />{error}</div>}
         <button className="role-primary" disabled={busy || !inviteToken}>
           {busy ? 'Activating…' : 'Activate account'}
@@ -1534,12 +1533,11 @@ export function SiteWaterOperations({ token, site, user }) {
         method: 'POST',
         body: JSON.stringify({
           title: f.get('title'),
-          instructions: f.get('instructions'),
+          instruction: f.get('instructions'),
           zone_id: f.get('zone_id') || null,
-          destination: site.address,
+          destination_lat: site.latitude,
+          destination_lon: site.longitude,
           requested_litres: f.get('litres') ? Number(f.get('litres')) : null,
-          duration_minutes: f.get('duration') ? Number(f.get('duration')) : null,
-          approval_required: user.role === 'SITE_MANAGER'
         })
       });
       setShow(false);
@@ -1590,8 +1588,8 @@ export function SiteWaterOperations({ token, site, user }) {
               <article key={t.id}>
                 <div>
                   <b>{t.title}</b>
-                  <small>{t.zone_id ? `Target zone · ${t.zone_id} · ` : ''}{t.destination || site?.address || 'Site destination'}</small>
-                  <p>{t.instructions}</p>
+                  <small>{t.zone_name || (t.zone_id ? `Target zone · ${t.zone_id}` : 'Entire site')}{t.destination_lat != null && t.destination_lon != null ? ` · ${t.destination_lat}, ${t.destination_lon}` : ''}</small>
+                  <p>{t.instruction}</p>
                   <Status>{t.status}</Status>
                   {t.accepted_by && <small>Driver accepted assignment</small>}
                 </div>
@@ -1641,14 +1639,13 @@ export function SiteWaterOperations({ token, site, user }) {
             <p className="role-muted">
               A high dust alert alone does not authorize spraying. Confirm surface conditions and tank readiness.
             </p>
-            <label>Task title<input name="title" defaultValue="Water spraying required" required /></label>
+            <label>Task title<input name="title" required /></label>
             <label>Target zone<select name="zone_id">
               <option value="">Entire site</option>
               {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select></label>
             <label>Instructions<textarea name="instructions" required minLength="3" placeholder="Where to spray and safety instructions..." /></label>
             <label>Water amount, if known (litres)<input name="litres" type="number" min="1" placeholder="e.g. 5000" /></label>
-            <label>Duration, if known (minutes)<input name="duration" type="number" min="1" placeholder="e.g. 30" /></label>
             <small>
               {user.role === 'SITE_MANAGER'
                 ? 'Requires approval before offering to drivers according to organization policy.'

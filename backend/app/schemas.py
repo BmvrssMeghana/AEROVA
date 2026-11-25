@@ -1,3 +1,4 @@
+from datetime import date, datetime, time
 from typing import Any, Literal
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -27,25 +28,35 @@ class Login(BaseModel):
 class SiteCreate(BaseModel):
     organization_id: str
     name: str = Field(min_length=2, max_length=180)
-    code: str = Field(min_length=2, max_length=60)
+    project_code: str = Field(min_length=2, max_length=60)
+    description: str | None = None
     address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = "India"
     project_type: str | None = None
-    area: float | None = Field(default=None, gt=0)
-    start_date: str | None = None
-    completion_date: str | None = None
+    area_acres: float | None = Field(default=None, gt=0)
+    built_up_area_sqft: float | None = Field(default=None, gt=0)
+    phase: str | None = None
+    status: str = "DRAFT"
+    start_date: date | None = None
+    expected_end_date: date | None = None
+    operating_start: time | None = None
+    operating_end: time | None = None
+    timezone: str = "Asia/Kolkata"
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
-    sensitive_receptors: list[str] = Field(default_factory=list)
-    working_hours: dict[str, Any] = Field(default_factory=dict)
-    existing_controls: list[str] = Field(default_factory=list)
-    water_source: str | None = None
+    nearby_receptors: str | None = None
 
 class ZoneCreate(BaseModel):
-    code: str = Field(min_length=2, max_length=24)
+    zone_code: str = Field(min_length=2, max_length=24)
     name: str = Field(min_length=2, max_length=160)
-    zone_type: str = "GENERAL"
-    geometry: dict[str, Any] | None = None
-    configuration: dict[str, Any] = Field(default_factory=dict)
+    zone_type: str = Field(min_length=2, max_length=80)
+    description: str | None = None
+    centroid_lat: float | None = Field(default=None, ge=-90, le=90)
+    centroid_lon: float | None = Field(default=None, ge=-180, le=180)
+    risk_level: str | None = None
+    area_sq_m: float | None = Field(default=None, gt=0)
 
 class DeviceProvision(BaseModel):
     site_id: str
@@ -53,8 +64,15 @@ class DeviceProvision(BaseModel):
     device_uid: str = Field(min_length=3, max_length=80)
     name: str = Field(min_length=2, max_length=180)
     device_type: str = Field(min_length=2, max_length=80)
-    source_type: Literal["PHYSICAL", "SIMULATION"]
-    firmware_version: str | None = None
+    source_type: Literal["PHYSICAL"]
+    scope: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    firmware: str | None = None
+    protocol: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    metrics: list[str] = Field(default_factory=list)
 
 class Telemetry(BaseModel):
     schema_version: str = "1.0"
@@ -63,7 +81,7 @@ class Telemetry(BaseModel):
     boot_id: str = Field(min_length=3, max_length=80)
     sequence_no: int = Field(ge=0)
     device_uptime_ms: int | None = Field(default=None, ge=0)
-    source_type: Literal["PHYSICAL", "SIMULATION"]
+    source_type: Literal["PHYSICAL"]
     metrics: dict[str, Any] = Field(default_factory=dict)
     states: dict[str, Any] = Field(default_factory=dict)
     raw: dict[str, Any] | None = None
@@ -97,13 +115,15 @@ class CustomerCreate(BaseModel):
 
 class WaterTaskCreate(BaseModel):
     zone_id: str | None = None
+    task_code: str | None = None
     title: str = Field(default="Water required", min_length=3, max_length=180)
-    instructions: str = Field(min_length=3, max_length=2000)
-    destination: str | None = Field(default=None, max_length=500)
+    instruction: str = Field(min_length=3, max_length=2000)
+    priority: str = "NORMAL"
     requested_litres: float | None = Field(default=None, gt=0, le=100000)
-    duration_minutes: int | None = Field(default=None, ge=1, le=1440)
-    dedupe_key: str | None = Field(default=None, min_length=4, max_length=160)
-    approval_required: bool = True
+    destination_lat: float | None = Field(default=None, ge=-90, le=90)
+    destination_lon: float | None = Field(default=None, ge=-180, le=180)
+    intervention_id: str | None = None
+    expires_at: datetime | None = None
 
 class WaterTaskOfferCreate(BaseModel):
     driver_id: str

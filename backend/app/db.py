@@ -1,11 +1,17 @@
 import os
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
+from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
+DB_SCHEMA = os.getenv("AEROVA_DB_SCHEMA", "aerova_website")
+if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", DB_SCHEMA):
+    raise RuntimeError("AEROVA_DB_SCHEMA must be a valid PostgreSQL schema identifier")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL:
@@ -27,7 +33,7 @@ else:
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(schema=DB_SCHEMA if engine.dialect.name == "postgresql" else None)
 
 def get_db():
     db = SessionLocal()
