@@ -1,0 +1,199 @@
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@source "./App.jsx";
+
+@theme {
+  --color-surface: #fcf9f8;
+  --color-surface-dim: #dcd9d9;
+  --color-surface-bright: #fcf9f8;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f6f3f2;
+  --color-surface-container: #f0eded;
+  --color-surface-container-high: #eae7e7;
+  --color-surface-container-highest: #e5e2e1;
+  --color-on-surface: #1c1b1b;
+  --color-on-surface-variant: #59413b;
+  --color-inverse-surface: #313030;
+  --color-inverse-on-surface: #f3f0ef;
+  --color-outline: #8d706a;
+  --color-outline-variant: #e1bfb7;
+  --color-surface-tint: #af2f11;
+  --color-primary: #af2f11;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #ff6845;
+  --color-on-primary-container: #631000;
+  --color-inverse-primary: #ffb4a3;
+  --color-secondary: #1e6964;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #a7ede6;
+  --color-on-secondary-container: #246d68;
+  --color-tertiary: #605e5a;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #9c9893;
+  --color-on-tertiary-container: #32312d;
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+  --color-primary-fixed: #ffdad2;
+  --color-primary-fixed-dim: #ffb4a3;
+  --color-on-primary-fixed: #3d0600;
+  --color-on-primary-fixed-variant: #8b1a00;
+  --color-secondary-fixed: #a9efe8;
+  --color-secondary-fixed-dim: #8ed3cc;
+  --color-on-secondary-fixed: #00201e;
+  --color-on-secondary-fixed-variant: #00504c;
+  --color-tertiary-fixed: #e7e2dc;
+  --color-tertiary-fixed-dim: #cac6c0;
+  --color-on-tertiary-fixed: #1d1b18;
+  --color-on-tertiary-fixed-variant: #494642;
+  --color-background: #fcf9f8;
+  --color-on-background: #1c1b1b;
+  --color-surface-variant: #e5e2e1;
+
+  --spacing-gutter: 1.5rem;
+  --spacing-gutter-lg: 2rem;
+  --spacing-margin: 1.5rem;
+  --spacing-margin-md: 3rem;
+  --spacing-margin-lg: 5rem;
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 1rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-space-xl: 2.5rem;
+  --spacing-space-2xl: 4rem;
+
+  --font-headline-xl: Manrope, sans-serif;
+  --font-headline-xl-mobile: Manrope, sans-serif;
+  --font-headline-lg: Manrope, sans-serif;
+  --font-headline-lg-mobile: Manrope, sans-serif;
+  --font-headline-md: Manrope, sans-serif;
+  --font-headline-sm: Manrope, sans-serif;
+  --font-title-md: Manrope, sans-serif;
+  --font-body-lg: Manrope, sans-serif;
+  --font-body-md: Manrope, sans-serif;
+  --font-body-sm: Manrope, sans-serif;
+  --font-label-telemetry: Manrope, sans-serif;
+  --font-label-badge: Manrope, sans-serif;
+  --font-stat-display: Manrope, sans-serif;
+
+  --text-headline-xl: 56px;
+  --text-headline-xl--line-height: 64px;
+  --text-headline-xl--font-weight: 800;
+  --text-headline-xl-mobile: 36px;
+  --text-headline-xl-mobile--line-height: 44px;
+  --text-headline-xl-mobile--font-weight: 800;
+  --text-headline-lg: 40px;
+  --text-headline-lg--line-height: 48px;
+  --text-headline-lg--font-weight: 700;
+  --text-headline-lg-mobile: 28px;
+  --text-headline-lg-mobile--line-height: 36px;
+  --text-headline-lg-mobile--font-weight: 700;
+  --text-headline-md: 28px;
+  --text-headline-md--line-height: 36px;
+  --text-headline-md--font-weight: 700;
+  --text-headline-sm: 20px;
+  --text-headline-sm--line-height: 28px;
+  --text-headline-sm--font-weight: 600;
+  --text-title-md: 16px;
+  --text-title-md--line-height: 24px;
+  --text-title-md--font-weight: 600;
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28px;
+  --text-body-lg--font-weight: 400;
+  --text-body-md: 15px;
+  --text-body-md--line-height: 24px;
+  --text-body-md--font-weight: 400;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 20px;
+  --text-body-sm--font-weight: 400;
+  --text-label-telemetry: 12px;
+  --text-label-telemetry--line-height: 16px;
+  --text-label-telemetry--font-weight: 500;
+  --text-label-badge: 12px;
+  --text-label-badge--line-height: 16px;
+  --text-label-badge--font-weight: 700;
+  --text-stat-display: 64px;
+  --text-stat-display--line-height: 68px;
+  --text-stat-display--font-weight: 800;
+}
+
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "liga";
+}
+
+@layer base {
+  .aerova-stitch-page,
+  .aerova-stitch-page * {
+    box-sizing: border-box;
+  }
+
+  .aerova-stitch-page :is(h1, h2, h3, h4, h5, h6, p, ul) {
+    margin: 0;
+  }
+
+  .aerova-stitch-page ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .aerova-stitch-page a {
+    color: inherit;
+    text-decoration: inherit;
+  }
+
+  .aerova-stitch-page img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .aerova-stitch-page button,
+  .aerova-stitch-page input,
+  .aerova-stitch-page textarea {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+}
+
+body:has(.aerova-stitch-page) {
+  min-width: 0;
+}
+
+.aerova-stitch-page a {
+  text-decoration: none;
+}
+
+.aerova-stitch-page a.text-on-primary {
+  color: #ffffff;
+}
+
+.aerova-stitch-page a.text-on-surface {
+  color: #1c1b1b;
+}
+
+.aerova-stitch-page a.text-on-surface-variant {
+  color: #59413b;
+}
+
+.aerova-stitch-page a.font-title-md,
+.aerova-stitch-page button.font-title-md {
+  font-family: Manrope;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}

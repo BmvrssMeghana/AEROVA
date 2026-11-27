@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  Activity, AlertTriangle, ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Bell, Check, CheckCircle2, ChevronDown,
+  Activity, AlertTriangle, ArrowLeft, ArrowRight, ArrowUpRight, Bell, Check, CheckCircle2, ChevronDown,
   ChevronLeft, ChevronRight, Cloud, Download, Droplets, FileText,
-  Gauge, Layers3, LogOut, MapPin, Menu, Plus, Radio, Search, Settings2,
-  Shield, ShieldAlert, Sparkles, Wind, X, Zap
+  Gauge, Layers3, LogOut, MapPin, Menu, Plus, Search, Settings2,
+  Shield, ShieldAlert, Wind, X, Zap
 } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './App.css';
+import './stitch-landing.css';
 import { AdminConsole, CustomerConsole, DriverApp, InvitationActivation, SiteWaterOperations } from './RoleDashboards.jsx';
 
 const API = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '');
@@ -89,206 +90,398 @@ function Empty({ icon: Icon = Activity, title = 'No data available', body = 'Con
 
 function PublicSite({ go }) {
   const [sent, setSent] = useState(false);
-  const [menu, setMenu] = useState(false);
   const [sending, setSending] = useState(false);
   const [formError, setFormError] = useState('');
+  const solutions = [
+    ['air', 'Real-Time Dust Monitoring', 'Tracks PM2.5 and PM10, along with temperature, humidity, wind speed and direction, soil moisture, and other environmental parameters.', '10s Micro-Intervals', 'orange'],
+    ['layers', 'Smart Site Mapping', 'Uses a site layout and map to show construction zones, sensor locations, dust hotspots, workers, equipment, and affected areas.', 'CAD & GIS Overlay', 'teal'],
+    ['travel_explore', 'Dust Source Identification', 'Helps identify potential sources such as excavation, demolition, material handling, cutting, and heavy vehicle movement.', 'Activity Correlation', 'orange'],
+    ['trending_up', 'Risk Prediction', 'Estimates how dust risk may change and spread based on pollution levels, wind conditions, site activity, and environmental factors.', 'Downwind Forecast', 'teal'],
+    ['crisis_alert', 'Targeted Interventions', 'Recommends appropriate actions such as localized misting, road sweeping, and source-level dust suppression.', 'Automated Dispatch', 'orange'],
+    ['water_drop', 'Water & Tanker Optimization', 'Considers soil moisture, dust levels, rainfall, and tank levels to avoid unnecessary watering, coordinating replenishment and drivers.', 'Resource Conservation', 'teal'],
+    ['engineering', 'Worker & Equipment Awareness', 'Tracks relevant worker presence, vehicle movement, and equipment activity to support comprehensive site-level monitoring.', 'Fleet & Crew Safety', 'orange'],
+    ['assignment_turned_in', 'Alerts & Reports', 'Provides notifications, historical trends, intervention records, and reports to support operational decisions and environmental compliance.', 'Audited Compliance', 'teal'],
+  ];
+
+  async function submitPilotRequest(event) {
+    event.preventDefault();
+    setSending(true);
+    setFormError('');
+    const formData = new FormData(event.currentTarget);
+    const body = {
+      name: formData.get('name'),
+      email: formData.get('email'),
+      location: formData.get('location'),
+      message: formData.get('message'),
+      consented: formData.get('consented') === 'on',
+    };
+    try {
+      const response = await fetch(`${API}/api/v1/demo-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || 'Unable to submit the site assessment request');
+      setSent(true);
+    } catch (error) {
+      setFormError(error.message === 'Failed to fetch' ? 'AEROVA API is offline.' : error.message);
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
-    <div className="public-page">
-      <header className="public-header">
-        <Brand onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
-        <button className="mobile-menu" onClick={() => setMenu(!menu)}><Menu /></button>
-        <nav className={menu ? 'public-nav open' : 'public-nav'}>
-          <a href="#how">How it works</a>
-          <a href="#solutions">Solutions</a>
-          <a href="#technology">Technology</a>
-          <a href="#contractors">For contractors</a>
-          <a href="#contact">Contact</a>
-        </nav>
-        <div className="header-actions">
-          <button className="plain-button" onClick={() => go('login')}>Sign in</button>
-          <Button variant="dark" onClick={() => go('signup')}>Get started <ArrowRight size={15} /></Button>
+    <div className="aerova-stitch-page min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-gutter">
+          <a className="group flex items-center gap-space-sm" href="#home">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-container font-headline-sm text-headline-sm font-bold text-on-primary shadow-sm">
+              <span className="material-symbols-outlined text-[20px] text-on-primary">cyclone</span>
+            </div>
+            <span className="font-headline-sm text-headline-sm font-bold uppercase tracking-tight text-on-surface">AEROVA</span>
+          </a>
+          <nav className="hidden items-center gap-space-lg lg:flex">
+            <a aria-current="page" className="font-title-md text-title-md text-on-surface transition-colors" href="#home">Home</a>
+            <a className="font-body-md text-body-md text-on-surface-variant transition-colors hover:text-on-surface" href="#platform">Platform</a>
+            <a className="font-body-md text-body-md text-on-surface-variant transition-colors hover:text-on-surface" href="#solutions">Solutions</a>
+            <a className="font-body-md text-body-md text-on-surface-variant transition-colors hover:text-on-surface" href="#platform">Technology</a>
+            <a className="font-body-md text-body-md text-on-surface-variant transition-colors hover:text-on-surface" href="#about">About</a>
+          </nav>
+          <div className="flex items-center gap-space-md">
+            <a className="hidden items-center justify-center px-space-md py-space-sm font-title-md text-title-md text-on-surface transition-colors hover:text-primary sm:inline-flex" href="#login" onClick={event => { event.preventDefault(); go('login'); }}>Sign In</a>
+            <a className="inline-flex items-center justify-center rounded-lg bg-primary-container px-space-lg py-space-sm font-title-md text-title-md text-on-primary shadow-[0_2px_8px_rgba(255,104,69,0.25)] transition-all hover:bg-primary" href="#contact">Request Demo</a>
+          </div>
         </div>
       </header>
 
-      <main>
-        <section className="public-hero">
-          <div className="hero-copy">
-            <Eyebrow><i /> CONSTRUCTION SITE DUST INTELLIGENCE</Eyebrow>
-            <h1>Know the dust.<br /><em>Control the source.</em></h1>
-            <p>Bring site conditions, risk signals and response actions together. See where dust starts, understand where it moves, and make every intervention count.</p>
-            <div className="hero-buttons">
-              <Button variant="coral" onClick={() => go('signup')}>Create an account <ArrowRight size={15} /></Button>
-              <a className="button button-outline" href="#how"><span className="play">▶</span> Explore how it works</a>
-            </div>
-            <div className="trust-note">
-              <span><Check size={14} /></span> Built for site teams, EHS leads, and project directors
-            </div>
-          </div>
-          <div className="hero-dashboard">
-            <div className="preview-head"><span>AUTHORIZED WORKSPACE</span></div>
-            <div className="empty">
-              <span><Shield size={24} /></span>
-              <b>Your site data stays in your workspace</b>
-              <p>Sign in to view projects, monitoring records, alerts and assigned work from the connected database.</p>
-            </div>
-          </div>
-        </section>
+      <main className="w-full bg-surface pt-20">
+        <div className="flex w-full flex-col bg-surface text-on-surface">
+          <div className="relative mx-auto w-full max-w-7xl px-gutter pb-space-2xl pt-space-xl">
+            <section className="grid grid-cols-1 items-center gap-gutter-lg lg:grid-cols-12">
+              <div className="flex flex-col items-start pr-0 lg:col-span-6 lg:pr-space-md">
+                <h1 className="mb-space-md font-headline-xl text-headline-xl-mobile leading-[1.12] tracking-tight text-on-surface sm:text-headline-xl">
+                  Smarter Dust Control.<span className="text-primary-container">Cleaner Construction.</span>
+                </h1>
+                <p className="mb-space-xl max-w-xl font-body-lg text-body-lg text-on-surface-variant">
+                  A smart construction site air quality and dust management platform. We connect sensing, site mapping, risk prediction, intervention, and resource optimization into one system protecting workforce health while cutting water usage and operational costs.
+                </p>
+                <div className="flex w-full flex-wrap items-center gap-space-md sm:w-auto">
+                  <a className="inline-flex items-center justify-center rounded-xl bg-primary-container px-7 py-3.5 font-title-md text-title-md text-on-primary shadow-[0_8px_20px_rgba(255,104,69,0.28)] transition-all hover:bg-primary" href="#contact">Request a Quote</a>
+                  <a className="inline-flex items-center justify-center rounded-xl bg-surface-container-highest px-7 py-3.5 font-title-md text-title-md text-on-surface transition-all hover:bg-surface-dim" href="#solutions">Our Services</a>
+                </div>
+                <div className="mt-space-xl flex items-center gap-space-xl pt-space-md">
+                  <div className="flex items-center gap-3">
+                    <span className="h-3 w-3 animate-pulse rounded-full bg-secondary" />
+                    <div>
+                      <div className="font-label-badge text-label-badge uppercase text-secondary">Grid Active</div>
+                      <div className="font-label-telemetry text-label-telemetry text-on-surface-variant">842 Nodes Syncing</div>
+                    </div>
+                  </div>
+                  <div className="h-8 w-px bg-outline-variant/40" />
+                  <div>
+                    <div className="font-label-badge text-label-badge uppercase text-on-surface">ISO 14001</div>
+                    <div className="font-label-telemetry text-label-telemetry text-on-surface-variant">Audited Telemetry</div>
+                  </div>
+                </div>
+              </div>
+              <div className="relative grid grid-cols-1 gap-space-md sm:grid-cols-2 lg:col-span-6">
+                <div className="group relative h-[380px] overflow-hidden rounded-3xl bg-surface-container shadow-lg transition-transform sm:h-[440px]" style={{ borderRadius: '36px 120px 36px 36px', clipPath: 'polygon(0px 0px, 80% 0px, 100% 28%, 100% 100%, 0px 100%)' }}>
+                  <img className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" alt="High-angle shot of a sprawling urban civil construction site with tower cranes, reinforced concrete framing, and soft atmospheric misting spray against a clean pale blue sky with warm sunlight." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC9WiNzK35WsWBAceDDzxvIZWopFNgO7c-otnFEaS5s1nTdjTP6kqd7EIoIRzDOjmEyQt0Q-5jgklvtW-Vah_mp1l0ZqtInjNUgfg33LkW9UsZaE7DJi-2Bfo918y90OyB_HqamMuBsCyA3Zt-7GK4yaIu2-EuatH25lvDeplbaa7_Zi2mSt13wre2h6kCHsTjjPmcdvmTgNwu4Wh6V81x0uZOQVCWeEjCL3XYpSc" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-transparent to-black/10" />
+                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-surface-container-lowest/90 px-3.5 py-1.5 shadow-md backdrop-blur-md">
+                    <span className="h-2.5 w-2.5 rounded-full bg-secondary" />
+                    <span className="font-label-badge text-label-badge text-on-surface">Zone North · 18 µg/m³ PM2.5</span>
+                  </div>
+                  <div className="absolute bottom-4 left-4 right-4">
+                    <span className="font-label-telemetry text-label-telemetry uppercase tracking-wider text-secondary-fixed">Civil Foundation</span>
+                    <p className="font-headline-sm text-headline-sm font-bold text-on-primary">Harbor Spine Metro</p>
+                  </div>
+                </div>
+                <div className="group relative h-[380px] overflow-hidden rounded-3xl bg-surface-container shadow-lg transition-transform sm:h-[440px] sm:translate-y-8" style={{ borderRadius: '36px 36px 120px', clipPath: 'polygon(0px 0px, 100% 0px, 100% 100%, 20% 100%, 0px 80%)' }}>
+                  <img className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" alt="Three site safety directors and project engineers wearing white and orange hardhats reviewing structural tablet telemetry data on a high-rise construction deck overlooking city infrastructure." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBxnM4T5fLF8mwTr_7udbQ0qXZarie_LvkRzAkruceopI2HMrm1J1_MWI8PLXxAG75D_MCdD7FlnrO1BFT48OmYsiLwtg9rLuueQ7x0IH8C8LN8I2XT8zUezk1BsaKi7K9N0hL8rGqPdNUFQvKzRRObwSXymKMKhcSGEJgTJkkTZdbu2qZHhPlFZlzLmiO9HJiISIvTAsUVEtUn4L2w63cZYrmIBIwi5p6lNks1o2Y" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-transparent to-black/10" />
+                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-primary-container px-3.5 py-1.5 text-on-primary shadow-md">
+                    <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                    <span className="font-label-badge text-label-badge">Field Ops · Active</span>
+                  </div>
+                  <div className="absolute bottom-4 left-4 right-4">
+                    <span className="font-label-telemetry text-label-telemetry uppercase tracking-wider text-secondary-fixed">Targeted Suppression</span>
+                    <p className="font-headline-sm text-headline-sm font-bold text-on-primary">Automated Mist Mesh</p>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-        <div className="journey-strip" id="how">
-          <small>ONE CONNECTED WORKFLOW</small>
-          <div>
-            {['Sense', 'Map', 'Predict', 'Decide', 'Act', 'Optimize'].map((x, i) => (
-              <span key={x}>
-                <b>{x}</b>
-                {i < 5 && <ArrowRight size={14} />}
-              </span>
-            ))}
+            <section id="about" className="mt-space-xl pt-space-xl">
+              <div className="mx-auto mb-space-xl max-w-3xl text-center">
+                <h2 className="mt-2 font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface">Built on Experience. Driven by Quality.</h2>
+              </div>
+              <div className="grid grid-cols-1 gap-space-md md:grid-cols-2 lg:grid-cols-12">
+                <div className="relative flex flex-col justify-between overflow-hidden rounded-3xl bg-surface-container p-space-xl shadow-sm lg:col-span-5" style={{ background: 'rgb(255, 255, 255)', border: '1px solid rgb(232, 229, 227)', borderRadius: '48px 18px', clipPath: 'polygon(24px 0px, 100% 0px, 100% calc(100% - 24px), calc(100% - 24px) 100%, 0px 100%, 0px 24px)' }}>
+                  <div className="pointer-events-none absolute right-4 top-4 flex gap-2 opacity-20">
+                    {[58, 76].map(height => <div key={height} style={{ width: 26, height, border: '2px solid rgb(225, 222, 220)', borderRadius: 9999 }} />)}
+                  </div>
+                  <div>
+                    <div className="mb-space-lg flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-container font-bold text-on-primary">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                      </div>
+                      <span className="font-headline-sm text-headline-sm font-bold uppercase tracking-tight">AEROVA GRID</span>
+                    </div>
+                    <div className="mb-1 font-stat-display text-stat-display font-extrabold tracking-tight">1600k+</div>
+                    <p className="max-w-sm font-body-md text-body-md text-on-surface-variant">Proven sensor hours monitored across residential, commercial, mining, and highway infrastructure sectors.</p>
+                  </div>
+                  <div className="mt-space-xl flex items-center gap-space-md pt-space-md">
+                    <div className="flex -space-x-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary-container text-xs font-bold text-on-secondary-container ring-2 ring-surface">JD</div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-container text-xs font-bold text-on-primary ring-2 ring-surface">RM</div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-dim text-xs font-bold text-on-surface ring-2 ring-surface">SK</div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-inverse-surface text-xs font-bold text-inverse-on-surface ring-2 ring-surface">+48</div>
+                    </div>
+                    <div>
+                      <div className="font-title-md text-title-md text-on-surface">Trusted by Tier 1 Builders</div>
+                      <div className="font-label-telemetry text-label-telemetry text-on-surface-variant">Civil Contractors Worldwide</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-space-md sm:grid-cols-2 lg:col-span-7">
+                  <div className="relative flex flex-col justify-between overflow-hidden rounded-3xl bg-surface-container p-space-lg shadow-sm" style={{ background: 'rgb(255, 255, 255)', border: '1px solid rgb(232, 229, 227)', borderRadius: '36px 14px', clipPath: 'polygon(18px 0px, 100% 0px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0px 100%, 0px 18px)' }}>
+                    <div className="mb-space-md flex items-center justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-container-lowest text-primary-container shadow-sm">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><rect height="16" rx="2" width="16" x="4" y="4" /><path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" /></svg>
+                      </div>
+                      <span className="rounded-full bg-secondary-fixed/50 px-2.5 py-0.5 font-label-badge text-label-badge text-secondary">&lt;10s Latency</span>
+                    </div>
+                    <div>
+                      <div className="mb-1 font-headline-md text-headline-md font-bold text-on-surface">Autonomous Grid</div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">We integrate dual-laser optical scattering to identify hazardous plumes within seconds.</p>
+                    </div>
+                    <div className="pointer-events-none absolute -right-2 -top-3 flex gap-1 opacity-10">
+                      {[50, 64].map(height => <div key={height} style={{ width: 24, height, border: '2px solid rgb(226, 222, 218)', borderRadius: 9999 }} />)}
+                    </div>
+                  </div>
+                  <div className="relative flex flex-col justify-between overflow-hidden rounded-3xl bg-surface-container p-space-lg shadow-sm" style={{ background: 'rgb(255, 255, 255)', border: '1px solid rgb(232, 229, 227)', borderRadius: '36px 14px', clipPath: 'polygon(18px 0px, 100% 0px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0px 100%, 0px 18px)' }}>
+                    <div className="mb-space-md flex items-center justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-container-lowest text-secondary shadow-sm">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>
+                      </div>
+                      <span className="rounded-full bg-primary-fixed px-2.5 py-0.5 font-label-badge text-label-badge text-primary-container">Zero Halts</span>
+                    </div>
+                    <div>
+                      <div className="mb-1 font-stat-display text-[44px] font-extrabold leading-tight text-on-surface">98%</div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">Project EPA compliance score sustained throughout multi-year demolition phases.</p>
+                    </div>
+                    <div className="pointer-events-none absolute -right-2 -top-3 flex gap-1 opacity-10">
+                      {[42, 56, 68].map(height => <div key={height} style={{ width: 20, height, border: '2px solid rgb(226, 222, 218)', borderRadius: 9999 }} />)}
+                    </div>
+                  </div>
+                  <div className="relative flex flex-col justify-between overflow-hidden rounded-3xl bg-surface-container p-space-lg shadow-sm" style={{ background: 'rgb(255, 255, 255)', border: '1px solid rgb(232, 229, 227)', borderRadius: '36px 14px', clipPath: 'polygon(18px 0px, 100% 0px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0px 100%, 0px 18px)' }}>
+                    <div className="mb-space-md flex items-center justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-container-lowest text-secondary shadow-sm">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" /></svg>
+                      </div>
+                      <span className="rounded-full bg-secondary-fixed/50 px-2.5 py-0.5 font-label-badge text-label-badge text-secondary">Conservation</span>
+                    </div>
+                    <div>
+                      <div className="mb-1 font-stat-display text-[44px] font-extrabold leading-tight text-on-surface">25M+ gal</div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">Gallons of site water preserved via targeted micro-droplet misting vs blanket hosing.</p>
+                    </div>
+                    <div className="pointer-events-none absolute -right-2 -top-3 flex gap-1 opacity-10">
+                      {[50, 64].map(height => <div key={height} style={{ width: 24, height, border: '2px solid rgb(226, 222, 218)', borderRadius: 9999 }} />)}
+                    </div>
+                  </div>
+                  <div className="relative flex flex-col justify-between overflow-hidden rounded-3xl bg-surface-container p-space-lg shadow-sm" style={{ background: 'rgb(255, 255, 255)', border: '1px solid rgb(232, 229, 227)', borderRadius: '36px 14px', clipPath: 'polygon(18px 0px, 100% 0px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0px 100%, 0px 18px)' }}>
+                    <div className="mb-space-md flex items-center justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-container-lowest text-primary-container shadow-sm">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                      </div>
+                      <span className="rounded-full bg-surface-container-highest px-2.5 py-0.5 font-label-badge text-label-badge text-on-surface-variant">Field Certified</span>
+                    </div>
+                    <div>
+                      <div className="mb-1 font-headline-md text-headline-md font-bold text-on-surface">Expert Support</div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">Our team of certified environmental safety engineers delivers turnkey calibration.</p>
+                    </div>
+                    <div className="pointer-events-none absolute -right-2 -top-3 flex gap-1 opacity-10">
+                      {[50, 64].map(height => <div key={height} style={{ width: 24, height, border: '2px solid rgb(226, 222, 218)', borderRadius: 9999 }} />)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-space-xl text-center">
+                <a className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-6 py-3 font-title-md text-title-md text-on-surface transition-all hover:bg-surface-dim" href="#solutions">
+                  <span>Exlore all services</span>
+                  <svg className="h-4 w-4 text-primary-container" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                </a>
+              </div>
+            </section>
+
+            <section id="platform" className="mt-space-xl pt-space-xl">
+              <div className="mb-space-xl flex flex-col justify-between gap-space-md md:flex-row md:items-end">
+                <h2 className="mt-1 font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface">End-to-End Construction Solutions You Can Rely On.</h2>
+              </div>
+              <div id="solutions" className="grid grid-cols-1 gap-space-md md:grid-cols-2 lg:grid-cols-4">
+                {solutions.map(([icon, title, description, label, tone]) => (
+                  <article key={title} className="group relative flex flex-col justify-between overflow-hidden rounded-3xl bg-surface-container p-space-lg transition-all hover:shadow-md" style={{ background: 'rgb(255, 255, 255)', border: '1px solid rgb(232, 229, 227)', borderRadius: '36px 14px', clipPath: 'polygon(18px 0px, 100% 0px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0px 100%, 0px 18px)' }}>
+                    <div className="pointer-events-none absolute -right-2 -top-3 flex gap-1 opacity-20">
+                      {[48, 62].map(height => <div key={height} style={{ width: 20, height, border: '2px solid rgb(226, 222, 218)', borderRadius: 9999 }} />)}
+                    </div>
+                    <div>
+                      <div className={`mb-space-md flex h-10 w-10 items-center justify-center rounded-2xl shadow-sm ${tone === 'orange' ? 'bg-primary-container text-primary' : 'bg-secondary-container text-secondary'}`} style={{ background: tone === 'orange' ? 'rgb(255, 239, 232)' : 'rgb(230, 246, 244)', borderRadius: '50%' }}>
+                        <span className="material-symbols-outlined text-[20px]">{icon}</span>
+                      </div>
+                      <h3 className="mb-2 font-headline-sm text-headline-sm font-bold text-on-surface">{title}</h3>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">{description}</p>
+                    </div>
+                    <div className="pt-space-md">
+                      <span className={`font-label-telemetry text-label-telemetry font-semibold ${tone === 'orange' ? 'text-primary-container' : 'text-secondary'}`}>{label}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section id="contact" className="mt-space-xl pt-space-xl">
+              <div className="grid grid-cols-1 items-center gap-space-xl lg:grid-cols-12">
+                <div className="relative h-[460px] overflow-hidden rounded-3xl shadow-md lg:col-span-6" style={{ borderRadius: '130px 28px 28px', clipPath: 'polygon(0px 22%, 26% 0px, 100% 0px, 100% 100%, 0px 100%)' }}>
+                  <img className="h-full w-full object-cover" alt="Construction worker in high-visibility safety vest standing atop heavy yellow formwork guiding a large crane precast panel lift during early morning golden hour." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAj7Y9AALksEOqkrr-ooAjniJvKk6G8vd_MlIfzfwBH93NRcTpoPnN4b1yPGvvca5KZI0Mcm3OXVh4kBbL5J41vd04cIjo7wQtQH_OhUt6t34_7pPNRDHi-Hv-6-L_TCnT7ZjSVyT_Jte6lRHRdPJeHE5vWkD2-ZL4a8I_NhhLC1mYyvMcha-3gR2BoNvQZ7Jl_XRreinq0KhLvHPkKc-dtXFgUR6yfpTonCuZ4FUI" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-transparent to-transparent" />
+                  <div className="absolute bottom-6 left-6 right-6 text-on-primary">
+                    <span className="font-label-badge text-label-badge uppercase tracking-wider text-secondary-fixed">Site Deployment Team</span>
+                    <p className="mt-1 font-headline-md text-headline-md font-bold text-on-primary">Autonomous mist cannons deployed within 48 hours of site survey.</p>
+                  </div>
+                </div>
+                <div className="rounded-3xl bg-surface-container p-space-xl shadow-sm lg:col-span-6" style={{ background: 'rgb(255, 255, 255)', border: '1px solid rgb(234, 231, 228)', borderRadius: '48px 18px', clipPath: 'polygon(28px 0px, 100% 0px, 100% calc(100% - 28px), calc(100% - 28px) 100%, 0px 100%, 0px 28px)' }}>
+                  <div className="mb-space-md">
+                    <span className="font-label-badge text-label-badge uppercase tracking-wider text-primary-container">Fast Telemetry Setup</span>
+                    <h3 className="mt-1 font-headline-md text-headline-md font-bold text-on-surface">Start Your Project With Us</h3>
+                    <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">Connect with our environmental engineering leads to get site calibration parameters and deployment quotes.</p>
+                  </div>
+                  {sent ? (
+                    <div className="py-7 text-center text-secondary">
+                      <span className="material-symbols-outlined text-[32px]" aria-hidden="true">check_circle</span>
+                      <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface">Pilot request submitted!</h3>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">An Aerova engineer will contact you shortly.</p>
+                    </div>
+                  ) : (
+                    <form className="space-y-space-md" onSubmit={submitPilotRequest}>
+                      <div>
+                        <label className="mb-1 block font-title-md text-title-md text-on-surface" htmlFor="pilot-name">Full Name</label>
+                        <input className="w-full rounded-xl bg-surface-container-lowest px-4 py-2.5 font-body-md text-body-md text-on-surface shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-container" id="pilot-name" name="name" placeholder="e.g. Marcus Vance" required type="text" />
+                      </div>
+                      <div className="grid grid-cols-1 gap-space-md sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block font-title-md text-title-md text-on-surface" htmlFor="pilot-email">Work Email</label>
+                          <input className="w-full rounded-xl bg-surface-container-lowest px-4 py-2.5 font-body-md text-body-md text-on-surface shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-container" id="pilot-email" name="email" placeholder="engineer@contractor.com" required type="email" />
+                        </div>
+                        <div>
+                          <label className="mb-1 block font-title-md text-title-md text-on-surface" htmlFor="pilot-location">Site Location / City</label>
+                          <input className="w-full rounded-xl bg-surface-container-lowest px-4 py-2.5 font-body-md text-body-md text-on-surface shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-container" id="pilot-location" name="location" placeholder="Denver, CO" required type="text" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block font-title-md text-title-md text-on-surface" htmlFor="pilot-message">Project Scope &amp; Particulate Challenges</label>
+                        <textarea className="w-full rounded-xl bg-surface-container-lowest px-4 py-2.5 font-body-md text-body-md text-on-surface shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-container" id="pilot-message" name="message" placeholder="Describe excavation acreage, proximity to residential borders, or silica concerns..." rows={3} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input className="cursor-pointer rounded text-primary-container focus:ring-0" id="pilot-terms" name="consented" required type="checkbox" />
+                        <label className="cursor-pointer font-body-sm text-body-sm text-on-surface-variant" htmlFor="pilot-terms">I agree to telemetry privacy guidelines &amp; environmental assessment terms.</label>
+                      </div>
+                      {formError && <div className="flex items-center gap-2 font-body-sm text-body-sm text-error"><AlertTriangle size={15} />{formError}</div>}
+                      <button className="w-full rounded-xl bg-primary-container py-3.5 font-title-md text-title-md text-on-primary shadow-md transition-all hover:bg-primary" disabled={sending} type="submit">
+                        {sending ? 'Submitting…' : 'Request Site Assessment'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="mt-space-xl pt-space-xl">
+              <div className="relative overflow-hidden rounded-3xl bg-surface-container p-space-2xl text-center shadow-sm" style={{ background: 'rgb(246, 243, 240)', border: '1px solid rgb(238, 234, 231)', borderRadius: 44 }}>
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-8 opacity-10">
+                  {[56, 72, 56].map((height, index) => <div key={index} style={{ width: 32, height, border: '2px solid rgba(0, 0, 0, 0.08)', borderRadius: 9999 }} />)}
+                </div>
+                <div className="relative z-10 mx-auto max-w-2xl">
+                  <h2 className="mb-space-sm font-headline-lg text-headline-lg font-bold tracking-tight text-on-surface">Ready to Build Your Clean Site?</h2>
+                  <p className="mb-space-xl font-body-md text-body-md text-on-surface-variant">Let's bring real-time intelligence to your next heavy civil, aggregate, or high-rise project. Protect your workforce, avoid penalties, and conserve water.</p>
+                  <div className="flex flex-wrap items-center justify-center gap-space-md">
+                    <a className="inline-flex items-center justify-center rounded-xl bg-primary-container px-8 py-3.5 font-title-md text-title-md text-on-primary shadow-md transition-all hover:bg-primary" href="#contact">Request a Site Pilot</a>
+                    <a className="inline-flex items-center justify-center rounded-xl bg-surface-container-highest px-8 py-3.5 font-title-md text-title-md text-on-surface transition-all hover:bg-surface-dim" href="#contact">Talk to an Engineer</a>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
-
-        <section className="section-wrap public-problem">
-          <Eyebrow>WHY AEROVA</Eyebrow>
-          <div className="problem-intro">
-            <h2>Dust changes with<br />the work on site.</h2>
-            <p>A reading alone can’t tell your team what to do next. AEROVA adds location, wind, activity and equipment context to help people find the source, choose a response and record its outcome.</p>
-          </div>
-          <div className="outcome-row">
-            {[
-              ['01', 'Understand where', 'Connect measurements to zones, work areas and boundary conditions.'],
-              ['02', 'Act with context', 'Use transparent risk reasoning and source-specific recommendations.'],
-              ['03', 'Learn what worked', 'Keep intervention, water and follow-up evidence together.']
-            ].map(([n, t, d]) => (
-              <article key={n}>
-                <small>{n}</small>
-                <b>{t}</b>
-                <p>{d}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="workflow-bg" id="solutions">
-          <div className="section-wrap">
-            <div className="section-title">
-              <div>
-                <Eyebrow>FROM SIGNAL TO ACTION</Eyebrow>
-                <h2>Dust control with<br />the full picture.</h2>
-              </div>
-              <p>A shared workspace for site managers, operators and environmental teams.</p>
-            </div>
-            <div className="workflow-cards">
-              {[
-                ['01', 'Sense', 'Air, wind, soil and site activity', Radio],
-                ['02', 'Map', 'Configured operational zones', MapPin],
-                ['03', 'Predict', 'Explainable dust-risk signals', Sparkles],
-                ['04', 'Act', 'Recommendations and approved controls', Zap],
-                ['05', 'Optimize', 'Before/after and resource records', BarChart3]
-              ].map(([n, t, d, Icon]) => (
-                <article key={t}>
-                  <span>{n}</span>
-                  <i><Icon size={20} /></i>
-                  <b>{t}</b>
-                  <p>{d}</p>
-                  <small>{t === 'Sense' ? 'CONNECTED SOURCES' : t === 'Predict' ? 'DATABASE ASSESSMENTS' : 'SITE CONTEXT'}</small>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="section-wrap contact-section" id="contact">
-          <div>
-            <Eyebrow>LET’S TALK ABOUT YOUR SITE</Eyebrow>
-            <h2>See what AEROVA<br />could do for your team.</h2>
-            <p>Tell us a little about your project and we’ll follow up with a walkthrough.</p>
-            <span className="contact-check"><CheckCircle2 size={18} /> Site-specific walkthrough</span>
-          </div>
-          <form className="demo-form" onSubmit={async e => {
-            e.preventDefault();
-            setSending(true);
-            setFormError('');
-            const fd = new FormData(e.currentTarget);
-            const body = {
-              name: fd.get('name'),
-              company: fd.get('company'),
-              email: fd.get('email'),
-              phone: fd.get('phone'),
-              project_type: fd.get('project_type'),
-              location: fd.get('location'),
-              message: fd.get('message'),
-              consented: fd.get('consented') === 'on'
-            };
-            try {
-              const res = await fetch(`${API}/api/v1/demo-requests`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-              });
-              const data = await res.json();
-              if (!res.ok) throw new Error(data.detail || 'Unable to submit the request');
-              setSent(true);
-            } catch (err) {
-              setFormError(err.message === 'Failed to fetch' ? 'AEROVA API is offline.' : err.message);
-            } finally {
-              setSending(false);
-            }
-          }}>
-            {sent ? (
-              <div className="success">
-                <CheckCircle2 size={32} />
-                <h3>Thanks for reaching out.</h3>
-                <p>Your demo request has been recorded.</p>
-              </div>
-            ) : (
-              <>
-                <div className="form-grid">
-                  {[
-                    ['Your name', 'text', 'name'],
-                    ['Company', 'text', 'company'],
-                    ['Work email', 'email', 'email'],
-                    ['Phone', 'tel', 'phone']
-                  ].map(([l, t, n]) => (
-                    <label key={l}>
-                      {l}
-                      <input required={l !== 'Phone'} name={n} type={t} placeholder={l === 'Work email' ? 'you@company.com' : l} />
-                    </label>
-                  ))}
-                  <label>
-                    Project type
-                    <select required name="project_type" defaultValue="">
-                      <option value="" disabled>Select a project type</option>
-                      {['Infrastructure', 'Residential', 'Commercial', 'Road construction', 'Industrial'].map(x => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    City / state
-                    <input name="location" />
-                  </label>
-                  <label className="wide">
-                    What would you like to improve?
-                    <textarea name="message" rows={3} placeholder="Tell us about your site or goals" />
-                  </label>
-                </div>
-                <label className="consent">
-                  <input type="checkbox" name="consented" required /> I agree to be contacted about AEROVA and accept the privacy notice.
-                </label>
-                {formError && <div className="form-error"><AlertTriangle size={15} />{formError}</div>}
-                <Button variant="primary" type="submit" disabled={sending}>
-                  {sending ? 'Sending…' : 'Request a demo'} <ArrowRight size={15} />
-                </Button>
-              </>
-            )}
-          </form>
-        </section>
       </main>
 
-      <footer className="public-footer">
-        <Brand onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
-        <span>Site-specific dust intelligence</span>
-        <small>© 2026 AEROVA · PERSISTED & VERIFIED OPERATION</small>
+      <footer className="w-full bg-inverse-surface pb-space-xl pt-space-2xl text-inverse-on-surface">
+        <div className="mx-auto max-w-7xl px-gutter">
+          <div className="flex flex-col justify-between gap-space-xl pb-space-2xl lg:flex-row lg:items-center">
+            <div className="max-w-xl">
+              <span className="mb-space-xs block font-label-telemetry text-label-telemetry uppercase tracking-wider text-secondary-fixed">Next-Gen ConTech Telemetry</span>
+              <h2 className="font-headline-lg text-headline-lg font-bold tracking-tight text-inverse-on-surface">Have a Project in Mind? Let's Build It.</h2>
+              <p className="mt-space-sm font-body-md text-body-md text-tertiary-fixed">Deploy high-precision climate control, automated misting nodes, and real-time environmental compliance across civil jobsites.</p>
+            </div>
+            <div className="flex w-full flex-col items-stretch gap-space-sm sm:flex-row sm:items-center lg:w-auto">
+              <div className="relative min-w-[280px]">
+                <input className="w-full rounded-lg border-0 bg-surface/10 px-space-md py-space-sm font-body-md text-body-md text-inverse-on-surface transition-colors placeholder:text-tertiary-fixed-dim focus:bg-surface/20 focus:outline-none" aria-label="Project engineer email" placeholder="Enter project engineer email" type="email" />
+              </div>
+              <button className="inline-flex items-center justify-center rounded-lg bg-primary-container px-space-lg py-space-sm font-title-md text-title-md text-on-primary transition-colors hover:bg-primary" onClick={() => go('signup')} type="button">Get Started</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-space-xl py-space-xl md:grid-cols-4 lg:grid-cols-5">
+            <div className="col-span-2">
+              <a className="mb-space-md flex items-center gap-space-sm" href="#home">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-container font-bold text-on-primary">
+                  <span className="material-symbols-outlined text-[18px] text-on-primary">cyclone</span>
+                </div>
+                <span className="font-headline-sm text-headline-sm font-bold uppercase tracking-tight text-inverse-on-surface">AEROVA</span>
+              </a>
+              <p className="mb-space-md max-w-sm font-body-sm text-body-sm text-tertiary-fixed">Autonomous industrial dust suppression, PM2.5/PM10 air quality telemetry, and intelligent site water grid orchestration.</p>
+              <div className="flex items-center gap-space-md font-body-sm text-body-sm text-tertiary-fixed">
+                <span className="material-symbols-outlined text-[18px] text-secondary-fixed">verified</span>
+                <span>ISO 14001 &amp; OSHA Compliant Telemetry</span>
+              </div>
+            </div>
+            <div>
+              <h3 className="mb-space-md font-title-md text-title-md font-bold text-inverse-on-surface">Platform</h3>
+              <ul className="space-y-space-sm font-body-sm text-body-sm text-tertiary-fixed">
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#platform">Sensor Array Grid</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#platform">Smart Mist Cannons</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#platform">Automated Compliance</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#platform">Telemetry API</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="mb-space-md font-title-md text-title-md font-bold text-inverse-on-surface">Solutions</h3>
+              <ul className="space-y-space-sm font-body-sm text-body-sm text-tertiary-fixed">
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#solutions">Heavy Civil Works</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#solutions">Mining &amp; Aggregates</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#solutions">Urban Infrastructure</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#solutions">Demolition Operations</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="mb-space-md font-title-md text-title-md font-bold text-inverse-on-surface">Company</h3>
+              <ul className="space-y-space-sm font-body-sm text-body-sm text-tertiary-fixed">
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#about">About Aerova</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#platform">Proprietary Tech</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#about">Safety Certifications</a></li>
+                <li><a className="transition-colors hover:text-inverse-on-surface" href="#contact">Contact Engineering</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="flex flex-col items-center justify-between gap-space-md border-t border-surface/10 pt-space-xl font-body-sm text-body-sm text-tertiary-container md:flex-row">
+            <p>© 2025 AEROVA Systems Inc. Heavy-duty environmental telemetry. All rights reserved.</p>
+            <div className="flex items-center gap-space-lg">
+              <a className="transition-colors hover:text-inverse-on-surface" href="#privacy">Privacy Policy</a>
+              <a className="transition-colors hover:text-inverse-on-surface" href="#terms">Terms of Service</a>
+              <a className="transition-colors hover:text-inverse-on-surface" href="#security">Security &amp; Calibration</a>
+            </div>
+          </div>
+        </div>
       </footer>
     </div>
   );

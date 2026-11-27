@@ -147,10 +147,10 @@ class InvitationActivation(BaseModel):
 
 class DemoRequestCreate(BaseModel):
     name: str = Field(min_length=2, max_length=180)
-    company: str = Field(min_length=2, max_length=180)
+    company: str | None = Field(default=None, min_length=2, max_length=180)
     email: EmailStr
     phone: str | None = Field(default=None, max_length=40)
-    project_type: str = Field(min_length=2, max_length=80)
+    project_type: str | None = Field(default=None, min_length=2, max_length=80)
     location: str | None = Field(default=None, max_length=180)
     message: str | None = Field(default=None, max_length=3000)
     consented: bool
