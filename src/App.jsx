@@ -487,6 +487,27 @@ function PublicSite({ go }) {
   );
 }
 
+const AUTH_GALLERY = [
+  [
+    ['Optical Sensor Node Array', 'https://lh3.googleusercontent.com/aida-public/AB6AXuD2OD3PdBUK2uJS2hZeAUhzYXuDlAw0Vcgphh8gXC5Ambpm-qzcPVPwHnd4HSBpJvUHcf0UQipAv2veOaOJcEWUjHP0FyYW-dzBrmvHDfHUKoyobYEMrMOpI1PV2n4GcaBD-WiJbWBVzeu3DLLMRJ0amkCW8OeY2LWDe9B48PYDuATzbx40QZr1boTd3orf-ZYYS2qhZr1qGI9PlsQy9uZzf-_MocwKGrmD3VBpmu0', 220],
+    ['Active Construction Work Zone', 'https://lh3.googleusercontent.com/aida-public/AB6AXuCxMcqjoXOZ1izfbs0bPMdmqks8dq905t_LZx158C3eabeFlGzSWQcGeGZRVf-WkaH5QD4t5dVpR_jlL5mP77QrDsAGhuQ6zCrZAk5mumGKbPLfuv6OKhnz9VSODPNMqu_I1MPtDE-vq0Kpvsa70R3led9-4GCPdzJmjw0V8R-XdiCFbJZmJRf3Qv4fH3V2Smul_pqyrMP5E0RJSYEUVRPREShu4OdR9mk22s6cD2w', 320],
+    ['Solar Telemetry Hub', 'https://lh3.googleusercontent.com/aida-public/AB6AXuAzSsXFRp0HsKNuf2AlPSRycBWpifzI3zm7KsgF24NWcudHVJKTDPrKLp_DzJawaxYFo7LczABS2X9FuvZQYFvYvMyNAGaU_C_b9y_UrP5ICpPDphOAelM8ZpsnkJtfhrgztpWPfmIQdCbJ9XUvBjo5WwZ11wMTKWOBLF2sejQU6mNP_qLe3r_WeCi2tFBBnZ8X-cgxQefzMpnBzn7gWYavy_17W1Wa4KT4ff_dtSo', 270],
+    ['Site Monitoring Unit', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDKe-sTp7Q7CmmpZKl7_aFWmLbtPptP4dRZaEsA_iOJcvNzQOS3zq27nFRUY6tpffm47rpN5n22pgNStDVamEEy-JtkCgPwj6nsEHN_XV4LUMdjf3J5JBSLyRUwMDdD7yJOAKgyCd8l7zbKEYyHu_5tR2CQwApAsZ2UeyS6j14Mb4FtKD7pqDZz0_LEDoaxDX9UOX38Jy-_KhNnuDtG4ADUki0l_R8TkxXfvckXew0', 240],
+  ],
+  [
+    ['Engineers Inspecting Construction Plans', 'https://lh3.googleusercontent.com/aida-public/AB6AXuB5BO9KQo9pwBrMqzOb7t4TKHK1QLcmCNxi1ysd_uHM9-JqfeeDWftxoS2SQ2U9UIfdUpFvYXr7cdR4TX34hb0KQF7LIL1dHT7bzN_Bd4QTc0suTdKnvX85eoPCroQaAJBSC0fBym8NV1rgo_ht1W1Aqrudb6aP2qiKMhkNzkrKNZmit5yWT3d1PAAKXymjgLIyD00_EYBIFMNvmK6Wtec1sCsz3z-FnpegiYwl8JY', 260],
+    ['Autonomous Water Mist Suppression System', 'https://lh3.googleusercontent.com/aida-public/AB6AXuCnil7AXxDn0xdusdEfLjJXqRakjRZ9tyWCf1aWWxUR2_GKcaP-e7DEGB0y9B6DthVmTJx_4qosEnAhA3qnoBqJGhVd0P9a_L0fa798AUNkUwrO1mtYNkkmHlF4OqMn6UzRhSug6kkEjBwenEWML535K3aUZEHA0GiAb4Pu_uVl3C73ZOEGYatPcD7QHMRiec08SsbHF66F9yyXX-STvqJRTtRk24-M_YbY_KPrEH0', 360],
+    ['Civil Engineers Reviewing Tablet Analytics', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDbPlTc_7fRuiCOSxuZ2h5fU_YTq3JihDsCRMI-z_2-HVFeXpOEieLJroSMQvaBadqdbTkOsKLihUpbcu0b-tpvtI-dkPYgMarM5TE3nLZRsFVjvdYzLVYCbPp_HCFSV9iDwj4DCD1v-4Qqx9m4h0jEiAftTQ9yJIVxTPxOFG8YrPTAf6CuJOuX1BxMyE9MI2g0O7pX3TMdKjCaSEF-UD3T-yMq9-Cx6wG_LEfCLjo', 260],
+    ['Excavator at Sunset', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDY9tuR4fzjUwKhCHiU_s-LCG7kQ5kePyucjqjIL75HK6CLjfjzev9zgLNuSsLn_6eUMMEgnp0kOix-mwMiinpGs81q0vNBRaPHNArL8hvzfMMqbQl4cu9zzV48aOo_MwR3_uA_5GrUQ9MQ-co2bEUQVWIEQoSVVsnHt2qzr9TLsRumX_HX05k_WM_LvlCvMsuAlz46pYFrRF_0GMjiq9BLvQtxzyoy1LzRhgbhKo4', 240],
+  ],
+  [
+    ['Modern Sustainable Tower Architecture', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDKsXKxQj2suLbtYGmYafEhUvtAiPHcKZ-7Uj_10SPV6dM6qhZo-AYN7W7GPc3Fgsl6DgRm_1JtaBbxIktmw-_5xlcgavXRoRj-TKW-B_dilstdHRcxBD99Fkg7Zxr-kHUG6yjBNkerbt7Q_F01qcIf_iu40dHPmI0X87vnFTpVSCGLwAAibpmyl4bhSURuU_skLgUTjKyhRJziOpH_SrS8QJzP2RjwiEbwBrpuJes', 360],
+    ['Perimeter Environmental Sensor Station', 'https://lh3.googleusercontent.com/aida-public/AB6AXuAb_XSKsTdA9vLTkHzSXv0pFsb_e8V2Q1siHWWuUWiVfgdsMcx6cnWIQ9rRIwEP6zVut1WPDns7t-5FURDWvZdiDbqKlhIKYpSdP_CECravzwcPc63Tf6zrpc21wect_DZTmFJC8MuQRUNJXPb4jfB4VPseW5d_kLDIlv_6kXRTdYop2UE4buk4Qij1wRncviid5jbDM3EHfno9wDv99LIADS5eyw5UHAESLVaAXgs', 240],
+    ['Construction Crane on Horizon', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDxxWz3zKHJR4us4N1k6_HQ5g4Nt78An_CP67cgAYqmNeYAFM8tLMeUUIpJp3TD5BOdNlT4rgX5GswbpCfCMDN-E3L0Z5F_GvWo1HSesgjsOxV7YEOZJq8QNKDYwGn8fbLU-rl-ThVcYY5q-1ko-AYKXW3ENlVagbhxf3QDSOAPqjeLOKRmd01ijvWPPx6ZQlRl0qOZ204yl3ceGaAXpFAZp0iPeHCIiNiF-kvvWuo', 280],
+    ['Architectural Structure', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDkSg68zvm7eN3tTEAkzvCGnmkA8YF_XfhCnyK1I3a9pm95ocny1v1E8ra5WyfbEcAhSq8f6SGbvwe8ASCWNcRayfbaBDqdEX2PEclHVZxNQDauKree-LZY6E1VxufqQjAdC6RosJJrHfyU8rQ1hU1JaUTuQVHZ4JTG_L2rvRjOxBGVoxDa5JZHFAxa4K9JJxeF9DIN6od_xQeaJk8-kCLKRG4oxP6yobg0EmdbWCI', 200],
+  ],
+];
+
 function AuthPage({ mode, go, onAuth }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -515,72 +536,79 @@ function AuthPage({ mode, go, onAuth }) {
   }
 
   return (
-    <div className="auth-screen">
-      <aside>
-        <Brand onClick={() => go('public')} />
-        <div>
-          <Eyebrow>YOUR SITE, IN CONTEXT</Eyebrow>
-          <h1>Make dust<br />actionable.</h1>
-          <p>See the full journey from site conditions to outcome evidence.</p>
-        </div>
-        <div className="auth-art-note">
-          <Wind size={18} />
-          <b>Wind shifts the picture.</b>
-          <small>Understand where dust may move next.</small>
-        </div>
-        <small className="auth-copyright">AEROVA · SITE DUST INTELLIGENCE</small>
-      </aside>
-      <main>
-        <button className="back-link" onClick={() => go('public')}>
-          <ChevronLeft size={16} /> Back to website
-        </button>
-        <div className="auth-form">
-          <Eyebrow>{signup ? 'GET STARTED' : 'WELCOME BACK'}</Eyebrow>
-          <h2>{signup ? 'Create your account' : 'Sign in to AEROVA'}</h2>
-          <p>{signup ? 'Create an organization workspace for your construction team.' : 'Continue to your authorized organization and sites.'}</p>
-          <form onSubmit={submit}>
-            {signup && (
-              <label>Full name
-                <input required name="full_name" autoComplete="name" />
-              </label>
-            )}
-            <label>Work email
-              <input required type="email" name="email" autoComplete="email" />
-            </label>
-            {signup && (
-              <label>Company name
-                <input required name="company_name" />
-              </label>
-            )}
-            <label>Password
-              <input required minLength={10} type="password" name="password" autoComplete={signup ? 'new-password' : 'current-password'} />
-            </label>
-            {signup && (
-              <>
-                <label>Role / designation
-                  <input required name="designation" />
-                </label>
-                <label className="consent">
-                  <input required type="checkbox" name="terms_accepted" value="true" /> I accept the terms and privacy policy.
-                </label>
-              </>
-            )}
-            {error && <div className="form-error"><AlertTriangle size={15} />{error}</div>}
-            <Button variant="primary" className="auth-submit" disabled={busy}>
-              {busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'} <ArrowRight size={15} />
-            </Button>
-          </form>
-          <div className="switch-auth">
-            {signup ? 'Already have an account?' : 'New to AEROVA?'}{' '}
-            <button onClick={() => go(signup ? 'login' : 'signup')}>
-              {signup ? 'Sign in' : 'Create an account'}
-            </button>
+    <div className="aerova-auth-page">
+      <div className="aerova-auth-layout">
+        <section className="aerova-auth-gallery" aria-hidden="true">
+          {AUTH_GALLERY.map((column, columnIndex) => (
+            <div className={`aerova-auth-gallery-column aerova-auth-gallery-column-${columnIndex + 1}`} key={columnIndex}>
+              {column.map(([alt, src, height]) => (
+                <div className="aerova-auth-gallery-tile" key={alt} style={{ height }}>
+                  <img alt={alt} src={src} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </section>
+        <section className="aerova-auth-panel">
+          <header className="aerova-auth-top">
+            <a href="#home" onClick={event => { event.preventDefault(); go('public'); }}>
+              <span aria-hidden="true">←</span>
+              <span>Return to Home</span>
+            </a>
+          </header>
+          <div className="aerova-auth-content">
+            <div className="aerova-auth-heading">
+              <span>{signup ? 'GET STARTED' : 'WELCOME BACK'}</span>
+              <h1>{signup ? 'Create your account' : 'Sign in to AEROVA'}</h1>
+              <p>{signup ? 'Create an organization workspace for your construction team.' : 'Continue to your authorized organization and sites.'}</p>
+            </div>
+            <form className="aerova-auth-form" onSubmit={submit}>
+              {signup && (
+                <div className="aerova-auth-field">
+                  <label htmlFor="auth-full-name">Full name</label>
+                  <input id="auth-full-name" required name="full_name" autoComplete="name" />
+                </div>
+              )}
+              <div className="aerova-auth-field">
+                <label htmlFor="auth-email">Work email</label>
+                <input id="auth-email" required type="email" name="email" autoComplete="email" placeholder="name@company.com" />
+              </div>
+              {signup && (
+                <div className="aerova-auth-field">
+                  <label htmlFor="auth-company-name">Company name</label>
+                  <input id="auth-company-name" required name="company_name" />
+                </div>
+              )}
+              <div className="aerova-auth-field">
+                <label htmlFor="auth-password">Password</label>
+                <input id="auth-password" required minLength={10} type="password" name="password" autoComplete={signup ? 'new-password' : 'current-password'} placeholder="••••••••••••" />
+              </div>
+              {signup && (
+                <>
+                  <div className="aerova-auth-field">
+                    <label htmlFor="auth-designation">Role / designation</label>
+                    <input id="auth-designation" required name="designation" />
+                  </div>
+                  <label className="aerova-auth-consent">
+                    <input required type="checkbox" name="terms_accepted" value="true" />
+                    <span>I accept the terms and privacy policy.</span>
+                  </label>
+                </>
+              )}
+              {error && <div className="form-error"><AlertTriangle size={15} />{error}</div>}
+              <button className="aerova-auth-submit" type="submit" disabled={busy}>
+                {busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'}
+              </button>
+              <div className="aerova-auth-switch">
+                {signup ? 'Already have an account?' : 'New to AEROVA?'}{' '}
+                <button type="button" onClick={() => go(signup ? 'login' : 'signup')}>
+                  {signup ? 'Sign in' : 'Create an account'}
+                </button>
+              </div>
+            </form>
           </div>
-          <div className="auth-security">
-            <Shield size={15} /> Workspace data is private to your authorized organization.
-          </div>
-        </div>
-      </main>
+        </section>
+      </div>
     </div>
   );
 }
